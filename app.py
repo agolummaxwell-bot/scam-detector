@@ -12,40 +12,47 @@ def detect_scam(text):
     text = text.lower()
     score = 0
 
-    # Strong scam words (high risk)
     high_risk = [
         "bank account", "send money", "urgent", "transfer",
         "click here", "verify your account", "bitcoin",
-        "investment opportunity"
+        "investment opportunity", "claim now"
     ]
 
-    # Medium risk words
     medium_risk = [
         "win", "won", "prize", "winner", "free",
         "money", "offer", "loan", "credit", "gift"
     ]
 
-    # Suspicious patterns
+    # 🚨 Strong signals
     if "http://" in text or "https://" in text:
-        score += 20
+        score += 30   # increased
 
     if any(char.isdigit() for char in text):
-        score += 5
+        score += 10   # increased
 
     if text.count("!") >= 2:
-        score += 10
+        score += 20   # increased
 
-    # Check high risk keywords
+    # 🔴 High risk words
     for word in high_risk:
         if word in text:
-            score += 25
+            score += 30   # increased
 
-    # Check medium risk keywords
+    # 🟠 Medium risk words
     for word in medium_risk:
         if word in text:
-            score += 10
+            score += 15   # increased
 
-    # Cap score
+    # 🚨 BONUS: combo detection (THIS IS KEY)
+    if "win" in text and "money" in text:
+        score += 20
+
+    if "click" in text and "http" in text:
+        score += 25
+
+    if "urgent" in text and "money" in text:
+        score += 25
+
     if score > 100:
         score = 100
 
