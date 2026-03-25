@@ -9,14 +9,24 @@ scam_keywords = [
 ]
 
 def detect_scam(text):
-    score = 0
     text = text.lower()
+    score = 0
+
+    scam_keywords = [
+        "win", "won", "prize", "winner", "free", "money",
+        "bank", "account", "urgent", "transfer", "click",
+        "offer", "credit", "loan", "bitcoin", "investment",
+        "gift", "package", "fee", "crypto", "verify"
+    ]
 
     for word in scam_keywords:
         if word in text:
             score += 10
 
-    return min(score, 100)
+    if score > 100:
+        score = 100
+
+    return score
 
 HTML = """
 <!DOCTYPE html>
