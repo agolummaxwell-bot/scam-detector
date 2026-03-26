@@ -1,10 +1,14 @@
 from flask import Flask, request, render_template_string, session, redirect
 import sqlite3
+import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
 app = Flask(__name__)
 app.secret_key = "secret123"
+
+# 🔐 PAYSTACK SECRET KEY
+PAYSTACK_SECRET_KEY = "sk_test_917114ef65bc6471f416567126bac1e625d127df"
 
 # ---------------- DB ----------------
 def init_db():
@@ -84,13 +88,6 @@ def update_checks(username):
     conn.commit()
     conn.close()
 
-def reset_checks(username):
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-    c.execute("UPDATE users SET checks = 0 WHERE username=?", (username,))
-    conn.commit()
-    conn.close()
-
 def set_paid(username):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -115,7 +112,6 @@ def home():
 
     if request.method == "POST":
 
-        # 🚫 LIMIT FOR FREE USERS
         if not paid and checks >= 3:
             return render_template_string("""
             <h2>🚫 Free limit reached</h2>
@@ -133,7 +129,11 @@ def home():
                     currency: "NGN",
 
                     callback: function(response){
-                        window.location.href = "/success";
+                        window.location.href = "/verify?reference=" + response.reference;
+                    },
+
+                    onClose: function(){
+                        alert("Payment cancelled");
                     }
                 });
 
@@ -145,11 +145,9 @@ def home():
         message = request.form["message"]
         score = detect_scam(message)
 
-        # increase usage
         if not paid:
             update_checks(user)
 
-        # save history
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
         c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
@@ -220,15 +218,29 @@ def home():
     </html>
     """, score=score, message=message, checks=checks, paid=paid)
 
-# ---------------- PAYMENT SUCCESS ----------------
-@app.route("/success")
-def success():
+# ---------------- VERIFY PAYMENT ----------------
+@app.route("/verify")
+def verify():
+    reference = request.args.get("reference")
     user = session.get("user")
 
-    if user:
-        set_paid(user)
+    if not reference:
+        return "No reference"
 
-    return redirect("/")
+    url = f"https://api.paystack.co/transaction/verify/{reference}"
+
+    headers = {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"
+    }
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    if data["status"] and data["data"]["status"] == "success":
+        set_paid(user)
+        return redirect("/")
+
+    return "Payment verification failed"
 
 # ---------------- HISTORY ----------------
 @app.route("/history")
@@ -276,7 +288,7 @@ def login():
         <button>Login</button>
     </form>
     '''
-    
+
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
