@@ -136,17 +136,157 @@ def logout():
 # ---------------- UI ----------------
 
 HTML = """
-<h1>🚨 Scam Detector AI</h1>
-<form method="post">
-<textarea name="message"></textarea><br>
-<button>Check</button>
-</form>
+<!DOCTYPE html>
+<html>
+<head>
+<title>Scam Detector AI</title>
 
-{% if score is not none %}
-<p>Score: {{score}}%</p>
-<p>{{explanation}}</p>
-{% endif %}
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f172a;
+    color: white;
+}
+
+/* Navbar */
+.navbar {
+    background: #020617;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.navbar a {
+    color: #22c55e;
+    text-decoration: none;
+    margin-left: 20px;
+}
+
+/* Container */
+.container {
+    max-width: 800px;
+    margin: 60px auto;
+    text-align: center;
+}
+
+/* Card */
+.card {
+    background: #1e293b;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+}
+
+/* Input */
+textarea {
+    width: 100%;
+    height: 150px;
+    border-radius: 10px;
+    padding: 15px;
+    font-size: 16px;
+    border: none;
+    outline: none;
+}
+
+/* Button */
+button {
+    margin-top: 20px;
+    padding: 12px 30px;
+    font-size: 18px;
+    border: none;
+    border-radius: 8px;
+    background: #22c55e;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #16a34a;
+}
+
+/* Result */
+.result {
+    margin-top: 30px;
+    font-size: 22px;
+}
+
+.safe { color: #22c55e; }
+.warning { color: #facc15; }
+.danger { color: #ef4444; }
+
+/* Loader */
+.loader {
+    margin-top: 20px;
+    border: 6px solid #1e293b;
+    border-top: 6px solid #22c55e;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    display: none;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+function showLoader() {
+    document.getElementById("loader").style.display = "block";
+}
+</script>
+
+</head>
+
+<body>
+
+<div class="navbar">
+    <h2>🚨 ScamAI</h2>
+    <div>
+        <a href="/">Home</a>
+        <a href="/history">History</a>
+        <a href="/logout">Logout</a>
+    </div>
+</div>
+
+<div class="container">
+    <div class="card">
+
+        <h1>Analyze Suspicious Message</h1>
+
+        <form method="post" onsubmit="showLoader()">
+            <textarea name="message" placeholder="Paste suspicious message here..."></textarea>
+            <br>
+            <button type="submit">Analyze</button>
+        </form>
+
+        <div id="loader" class="loader"></div>
+
+        {% if score is not none %}
+            <div class="result">
+                <p>Scam Score: {{score}}%</p>
+
+                {% if score < 30 %}
+                    <p class="safe">✅ Safe</p>
+                {% elif score < 70 %}
+                    <p class="warning">⚠️ Suspicious</p>
+                {% else %}
+                    <p class="danger">🚨 High Risk Scam</p>
+                {% endif %}
+
+                <p>{{ explanation }}</p>
+            </div>
+        {% endif %}
+
+    </div>
+</div>
+
+</body>
+</html>
 """
-
-if __name__ == "__main__":
-    app.run(debug=True)
