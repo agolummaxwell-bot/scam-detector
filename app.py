@@ -4,7 +4,101 @@ import sqlite3
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
+app.secret_key = "secret123"
 
+def init_db():
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        password TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        message TEXT,
+        score INTEGER
+    )''')
+
+    conn.commit()
+    conn.close()
+app.secret_key = "secret123"
+
+def init_db():
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        password TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        message TEXT,
+        score INTEGER
+    )''')
+
+    conn.commit()
+    conn.close()
+@app.route("/", methods=["GET", "POST"])
+def home():
+    if "user" not in session:
+        return redirect("/login")
+
+    @app.route("/history")
+def history():
+    if "user" not in session:
+        return redirect("/login")
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT message, score FROM history WHERE username=?", (session["user"],))
+    data = c.fetchall()
+    conn.close()
+
+    html = "<h2>Your History</h2>"
+    for msg, score in data:
+        html += f"<p>{msg} → {score}%</p>"
+
+    return html
+
+    @app.route("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect("/login")
+    score = None
+    explanation = ""
+
+    if request.method == "POST":
+        message = request.form["message"]
+        score = detect_scam(message)
+
+        # Save to history
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
+                  (session["user"], message, score))
+        conn.commit()
+        conn.close()
+
+        explanation = "Analyzed using AI model"
+
+    return render_template_string(HTML, score=score, explanation=explanation)
+    <h2>Login</h2>
+    <form method="post">
+        <input name="username" placeholder="Username"><br>
+        <input name="password" type="password" placeholder="Password"><br>
+        <button>Login</button>
+    </form>
+    """
+init_db()
+init_db()
 app = Flask(__name__)
 # AI Training Data
 messages = [
