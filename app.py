@@ -121,18 +121,18 @@ def history():
     data = c.fetchall()
     conn.close()
 
-    html = "<h2>Your History</h2>"
-    for msg, score in data:
-        html += f"<p>{msg} → {score}%</p>"
+    scores = [row[1] for row in data]
+    messages = [row[0] for row in data]
 
-    return html
+    avg_score = int(sum(scores)/len(scores)) if scores else 0
+    total = len(scores)
 
-
-@app.route("/logout")
-def logout():
-    session.pop("user", None)
-    return redirect("/login")
-
+    return render_template_string(HISTORY_HTML,
+        scores=scores,
+        messages=messages,
+        avg_score=avg_score,
+        total=total
+    )
 # ---------------- UI ----------------
 
 HTML = """
@@ -292,6 +292,78 @@ function showLoader() {
 
     </div>
 </div>
+
+</body>
+</html>
+"""
+HISTORY_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Analytics</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    background: #0f172a;
+    color: white;
+    padding: 40px;
+}
+
+.card {
+    background: #1e293b;
+    padding: 30px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+}
+
+h1 { text-align: center; }
+
+.stat {
+    font-size: 20px;
+    margin: 10px 0;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>📊 Analytics Dashboard</h1>
+
+<div class="card">
+    <p class="stat">Total Scans: {{total}}</p>
+    <p class="stat">Average Risk Score: {{avg_score}}%</p>
+</div>
+
+<div class="card">
+    <canvas id="chart"></canvas>
+</div>
+
+<script>
+const scores = {{scores|tojson}};
+
+const ctx = document.getElementById('chart');
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: scores.map((_, i) => "Scan " + (i+1)),
+        datasets: [{
+            label: 'Scam Score %',
+            data: scores,
+            borderWidth: 2
+        }]
+    },
+    options: {
+        scales: {
+            y: { beginAtZero: true, max: 100 }
+        }
+    }
+});
+</script>
 
 </body>
 </html>
