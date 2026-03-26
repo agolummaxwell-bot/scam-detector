@@ -13,8 +13,9 @@ def init_db():
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        password TEXT
+        username TEXT UNIQUE,
+        paid INTEGER DEFAULT 0,
+        checks INTEGER DEFAULT 0
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS history (
@@ -67,41 +68,72 @@ def detect_scam(text):
 
     return min(score, 100)
 
+# ---------------- HELPERS ----------------
+def get_user(username):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT paid, checks FROM users WHERE username=?", (username,))
+    user = c.fetchone()
+    conn.close()
+    return user
+
+def update_checks(username):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET checks = checks + 1 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+
+def reset_checks(username):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET checks = 0 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+
+def set_paid(username):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET paid = 1 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+
 # ---------------- HOME ----------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     score = None
     message = ""
 
-    if "checks" not in session:
-        session["checks"] = 0
+    user = session.get("user")
+
+    if not user:
+        return redirect("/login")
+
+    user_data = get_user(user)
+    paid = user_data[0]
+    checks = user_data[1]
 
     if request.method == "POST":
 
-        # 🚫 LIMIT REACHED
-        if session["checks"] >= 3:
+        # 🚫 LIMIT FOR FREE USERS
+        if not paid and checks >= 3:
             return render_template_string("""
             <h2>🚫 Free limit reached</h2>
             <p>You have used your 3 free checks.</p>
 
-            <button onclick="payWithPaystack()">💳 Pay ₦2000 to continue</button>
+            <button onclick="payWithPaystack()">💳 Pay ₦2000 to unlock</button>
 
             <script src="https://js.paystack.co/v1/inline.js"></script>
             <script>
             function payWithPaystack(){
                 var handler = PaystackPop.setup({
                     key: 'pk_test_53472e03ba2d63a4a5f9de9c49d88e901a2ab56a',
-                    email: 'user@email.com',
+                    email: 'agolummaxwell@gmail.com',
                     amount: 200000,
                     currency: "NGN",
 
                     callback: function(response){
-                        alert("Payment successful!");
-                        window.location.href = "/reset";
-                    },
-
-                    onClose: function(){
-                        alert("Payment cancelled");
+                        window.location.href = "/success";
                     }
                 });
 
@@ -113,16 +145,17 @@ def home():
         message = request.form["message"]
         score = detect_scam(message)
 
-        session["checks"] += 1
+        # increase usage
+        if not paid:
+            update_checks(user)
 
-        # SAVE HISTORY
-        if "user" in session:
-            conn = sqlite3.connect("database.db")
-            c = conn.cursor()
-            c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
-                      (session["user"], message, score))
-            conn.commit()
-            conn.close()
+        # save history
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
+                  (user, message, score))
+        conn.commit()
+        conn.close()
 
     return render_template_string("""
     <!DOCTYPE html>
@@ -157,17 +190,17 @@ def home():
                 margin-top: 20px;
                 font-size: 20px;
             }
-            .login {
-                margin-top: 20px;
-                display: block;
-                color: #38bdf8;
-            }
         </style>
     </head>
     <body>
 
         <h1>🛡 DetectorMax</h1>
-        <p>Free checks left: {{3 - session['checks']}}</p>
+
+        {% if not paid %}
+            <p>Free checks left: {{3 - checks}}</p>
+        {% else %}
+            <p>✅ Unlimited access</p>
+        {% endif %}
 
         <form method="post">
             <textarea name="message" placeholder="Paste message here...">{{message}}</textarea><br>
@@ -180,23 +213,60 @@ def home():
             </div>
         {% endif %}
 
-        <a class="login" href="/login">Login</a>
+        <br><br>
+        <a href="/history" style="color:#38bdf8;">View History</a>
 
     </body>
     </html>
-    """, score=score, message=message)
+    """, score=score, message=message, checks=checks, paid=paid)
 
-# ---------------- RESET AFTER PAYMENT ----------------
-@app.route("/reset")
-def reset():
-    session["checks"] = 0
+# ---------------- PAYMENT SUCCESS ----------------
+@app.route("/success")
+def success():
+    user = session.get("user")
+
+    if user:
+        set_paid(user)
+
     return redirect("/")
+
+# ---------------- HISTORY ----------------
+@app.route("/history")
+def history():
+    user = session.get("user")
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT message, score FROM history WHERE username=?", (user,))
+    data = c.fetchall()
+    conn.close()
+
+    html = "<h2>Your History</h2>"
+    for msg, score in data:
+        html += f"<p><b>{score}%</b> - {msg}</p>"
+
+    html += '<br><a href="/">⬅ Back</a>'
+    return html
 
 # ---------------- LOGIN ----------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        session["user"] = request.form["username"]
+        username = request.form["username"]
+
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+
+        c.execute("SELECT * FROM users WHERE username=?", (username,))
+        user = c.fetchone()
+
+        if not user:
+            c.execute("INSERT INTO users (username) VALUES (?)", (username,))
+            conn.commit()
+
+        conn.close()
+
+        session["user"] = username
         return redirect("/")
 
     return '''
@@ -206,7 +276,7 @@ def login():
         <button>Login</button>
     </form>
     '''
-
+    
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
