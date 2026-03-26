@@ -91,7 +91,7 @@ HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Scam Detector</title>
+    <title>Scam Detector AI</title>
     <style>
         body {
             font-family: Arial;
@@ -101,54 +101,59 @@ HTML = """
             padding: 50px;
         }
 
+        h1 {
+            font-size: 40px;
+        }
+
+        textarea {
+            width: 60%;
+            height: 150px;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 12px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            background: #22c55e;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+
+        .result {
+            margin-top: 30px;
+            font-size: 22px;
+        }
+
+        .safe {
+            color: #22c55e;
+        }
+
+        .warning {
+            color: #facc15;
+        }
+
+        .danger {
+            color: #ef4444;
+        }
+
         .card {
             background: #1e293b;
             padding: 30px;
             border-radius: 15px;
-            width: 400px;
+            width: 70%;
             margin: auto;
-            box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
-        }
-
-        textarea {
-            width: 100%;
-            height: 120px;
-            border-radius: 10px;
-            border: none;
-            padding: 10px;
-            margin-top: 10px;
-        }
-
-        button {
-            margin-top: 15px;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            background: #3b82f6;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .score {
-            margin-top: 20px;
-            font-size: 22px;
-        }
-
-        .safe { color: #22c55e; }
-        .warn { color: #f59e0b; }
-        .danger { color: #ef4444; }
-
-        .bar {
-            height: 10px;
-            background: #334155;
-            border-radius: 10px;
-            margin-top: 10px;
-        }
-
-        .fill {
-            height: 10px;
-            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -156,51 +161,32 @@ HTML = """
 <body>
 
 <div class="card">
-    <h1>🚨 Scam Detector</h1>
+    <h1>🚨 Scam Detector AI</h1>
 
     <form method="post">
-        <textarea name="message" placeholder="Paste message here..."></textarea>
-        <br>
-        <button type="submit">Check</button>
+        <textarea name="message" placeholder="Paste suspicious message here..."></textarea><br>
+        <button type="submit">Analyze Message</button>
     </form>
 
     {% if score is not none %}
-        <div class="score">
-            Scam Score: {{score}}%
-        </div>
+        <div class="result">
+            <p>Scam Score: {{score}}%</p>
 
-        <div class="bar">
-            <div class="fill"
-                 style="width: {{score}}%;
-                 background:
-                 {% if score < 30 %}#22c55e
-                 {% elif score < 70 %}#f59e0b
-                 {% else %}#ef4444
-                 {% endif %};">
-            </div>
-        </div>
-
-        <p class="
-            {% if score < 30 %}safe
-            {% elif score < 70 %}warn
-            {% else %}danger
-            {% endif %}
-        ">
             {% if score < 30 %}
-                ✅ Likely Safe
+                <p class="safe">✅ Safe Message</p>
             {% elif score < 70 %}
-                ⚠️ Suspicious
+                <p class="warning">⚠️ Suspicious Message</p>
             {% else %}
-                🚨 High Risk Scam
+                <p class="danger">🚨 High Risk Scam</p>
             {% endif %}
-        </p>
+        </div>
     {% endif %}
-
 </div>
 
 </body>
 </html>
 """
+
 @app.route("/", methods=["GET", "POST"])
 def home():
     score = None
