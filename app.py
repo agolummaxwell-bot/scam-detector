@@ -215,8 +215,25 @@ def home():
     if request.method == "POST":
         message = request.form["message"]
         score = detect_scam(message)
+explanation = []
 
-    return render_template_string(HTML, score=score)
+if "http" in message:
+    explanation.append("Contains suspicious link")
+
+if "win" in message or "won" in message:
+    explanation.append("Mentions winning or prize")
+
+if "urgent" in message:
+    explanation.append("Creates urgency")
+
+if any(char.isdigit() for char in message):
+    explanation.append("Contains numbers (possible bait)")
+
+if not explanation:
+    explanation.append("No strong scam signals detected")
+
+explanation = ", ".join(explanation)
+ return render_template_string(HTML, score=score, explanation=explanation)
 
 if __name__ == "__main__":
     app.run(debug=True)
