@@ -73,35 +73,35 @@ def home():
     score = None
     message = ""
 
-    # FREE LIMIT
     if "checks" not in session:
         session["checks"] = 0
 
     if request.method == "POST":
 
-        # LIMIT REACHED → SHOW PAYMENT
+        # 🚫 LIMIT REACHED
         if session["checks"] >= 3:
             return render_template_string("""
             <h2>🚫 Free limit reached</h2>
             <p>You have used your 3 free checks.</p>
 
-            <button onclick="pay()">💳 Pay ₦2000 to continue</button>
+            <button onclick="payWithPaystack()">💳 Pay ₦2000 to continue</button>
 
             <script src="https://js.paystack.co/v1/inline.js"></script>
             <script>
-            function pay() {
-                let handler = PaystackPop.setup({
-                    key: 'YOUR_PAYSTACK_PUBLIC_KEY',
+            function payWithPaystack(){
+                var handler = PaystackPop.setup({
+                    key: 'pk_test_53472e03ba2d63a4a5f9de9c49d88e901a2ab56a',
                     email: 'user@email.com',
                     amount: 200000,
+                    currency: "NGN",
 
                     callback: function(response){
-                        alert('Payment successful!');
-                        location.reload();
+                        alert("Payment successful!");
+                        window.location.href = "/reset";
                     },
 
                     onClose: function(){
-                        alert('Payment cancelled');
+                        alert("Payment cancelled");
                     }
                 });
 
@@ -185,6 +185,12 @@ def home():
     </body>
     </html>
     """, score=score, message=message)
+
+# ---------------- RESET AFTER PAYMENT ----------------
+@app.route("/reset")
+def reset():
+    session["checks"] = 0
+    return redirect("/")
 
 # ---------------- LOGIN ----------------
 @app.route("/login", methods=["GET", "POST"])
