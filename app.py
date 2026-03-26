@@ -122,208 +122,84 @@ def history():
     conn.close()
 
     scores = [row[1] for row in data]
-    messages = [row[0] for row in data]
 
-    avg_score = int(sum(scores)/len(scores)) if scores else 0
     total = len(scores)
+    avg = int(sum(scores)/total) if total else 0
+
+    high = len([s for s in scores if s > 70])
+    medium = len([s for s in scores if 30 <= s <= 70])
+    low = len([s for s in scores if s < 30])
 
     return render_template_string(HISTORY_HTML,
         scores=scores,
-        messages=messages,
-        avg_score=avg_score,
-        total=total
+        total=total,
+        avg=avg,
+        high=high,
+        medium=medium,
+        low=low
     )
+    @app.route("/download")
+def download():
+    if "user" not in session:
+        return redirect("/login")
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT message, score FROM history WHERE username=?", (session["user"],))
+    data = c.fetchall()
+    conn.close()
+
+    csv_data = "Message,Score\n"
+    for msg, score in data:
+        csv_data += f"{msg},{score}\n"
+
+    return csv_data, 200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename=history.csv'
+    }
 # ---------------- UI ----------------
 
-HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<title>ScamAI Dashboard</title>
-
-<style>
-body {
-    margin: 0;
-    font-family: 'Segoe UI', sans-serif;
-    background: #0f172a;
-    color: white;
-    display: flex;
-}
-
-/* Sidebar */
-.sidebar {
-    width: 220px;
-    height: 100vh;
-    background: #020617;
-    padding: 20px;
-    position: fixed;
-}
-
-.sidebar h2 {
-    color: #22c55e;
-}
-
-.sidebar a {
-    display: block;
-    margin: 20px 0;
-    color: #94a3b8;
-    text-decoration: none;
-}
-
-.sidebar a:hover {
-    color: white;
-}
-
-/* Main content */
-.main {
-    margin-left: 240px;
-    padding: 40px;
-    width: 100%;
-}
-
-/* Card */
-.card {
-    background: #1e293b;
-    padding: 30px;
-    border-radius: 15px;
-    max-width: 800px;
-}
-
-/* Input */
-textarea {
-    width: 100%;
-    height: 150px;
-    border-radius: 10px;
-    padding: 15px;
-    border: none;
-    outline: none;
-}
-
-/* Button */
-button {
-    margin-top: 20px;
-    padding: 10px 25px;
-    border: none;
-    border-radius: 8px;
-    background: #22c55e;
-    color: white;
-    cursor: pointer;
-}
-
-button:hover {
-    background: #16a34a;
-}
-
-/* Result */
-.result {
-    margin-top: 20px;
-}
-
-.safe { color: #22c55e; }
-.warning { color: #facc15; }
-.danger { color: #ef4444; }
-
-/* Loader */
-.loader {
-    margin-top: 20px;
-    border: 6px solid #1e293b;
-    border-top: 6px solid #22c55e;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    display: none;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-</style>
-
-<script>
-function showLoader() {
-    document.getElementById("loader").style.display = "block";
-}
-</script>
-
-</head>
-
-<body>
-
-<!-- Sidebar -->
-<div class="sidebar">
-    <h2>🚨 ScamAI</h2>
-    <a href="/">Dashboard</a>
-    <a href="/history">History</a>
-    <a href="/logout">Logout</a>
-</div>
-
-<!-- Main -->
-<div class="main">
-    <h1>Dashboard</h1>
-
-    <div class="card">
-
-        <h2>Analyze Message</h2>
-
-        <form method="post" onsubmit="showLoader()">
-            <textarea name="message" placeholder="Paste suspicious message..."></textarea>
-            <button type="submit">Analyze</button>
-        </form>
-
-        <div id="loader" class="loader"></div>
-
-        {% if score is not none %}
-            <div class="result">
-                <p><strong>Scam Score:</strong> {{score}}%</p>
-
-                {% if score < 30 %}
-                    <p class="safe">Safe</p>
-                {% elif score < 70 %}
-                    <p class="warning">Suspicious</p>
-                {% else %}
-                    <p class="danger">High Risk Scam</p>
-                {% endif %}
-
-                <p>{{ explanation }}</p>
-            </div>
-        {% endif %}
-
-    </div>
-</div>
-
-</body>
-</html>
-"""
 HISTORY_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Analytics</title>
+<title>Dashboard</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body {
-    font-family: Arial;
     background: #0f172a;
     color: white;
-    padding: 40px;
-}
-
-.card {
-    background: #1e293b;
+    font-family: Arial;
     padding: 30px;
-    border-radius: 15px;
-    margin-bottom: 30px;
 }
 
 h1 { text-align: center; }
 
-.stat {
-    font-size: 20px;
-    margin: 10px 0;
+.grid {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.card {
+    flex: 1;
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.big { font-size: 28px; }
+
+button {
+    padding: 10px 20px;
+    background: #22c55e;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
 }
 </style>
 
@@ -331,36 +207,35 @@ h1 { text-align: center; }
 
 <body>
 
-<h1>📊 Analytics Dashboard</h1>
+<h1>📊 Your Analytics</h1>
 
-<div class="card">
-    <p class="stat">Total Scans: {{total}}</p>
-    <p class="stat">Average Risk Score: {{avg_score}}%</p>
+<div class="grid">
+    <div class="card"><p>Total</p><div class="big">{{total}}</div></div>
+    <div class="card"><p>Avg Score</p><div class="big">{{avg}}%</div></div>
+    <div class="card"><p>High Risk</p><div class="big">{{high}}</div></div>
+    <div class="card"><p>Medium</p><div class="big">{{medium}}</div></div>
+    <div class="card"><p>Safe</p><div class="big">{{low}}</div></div>
 </div>
 
 <div class="card">
     <canvas id="chart"></canvas>
 </div>
 
+<br>
+<a href="/download"><button>⬇ Download CSV</button></a>
+
 <script>
 const scores = {{scores|tojson}};
 
-const ctx = document.getElementById('chart');
-
-new Chart(ctx, {
+new Chart(document.getElementById('chart'), {
     type: 'line',
     data: {
         labels: scores.map((_, i) => "Scan " + (i+1)),
         datasets: [{
-            label: 'Scam Score %',
+            label: 'Scam Score',
             data: scores,
             borderWidth: 2
         }]
-    },
-    options: {
-        scales: {
-            y: { beginAtZero: true, max: 100 }
-        }
     }
 });
 </script>
