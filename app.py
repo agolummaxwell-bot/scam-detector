@@ -1,6 +1,5 @@
 from flask import Flask, request, render_template_string, session, redirect
 import sqlite3
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
@@ -54,7 +53,6 @@ model.fit(X, labels)
 
 def detect_scam(text):
     text = text.lower()
-
     X_input = vectorizer.transform([text])
     probability = model.predict_proba(X_input)[0][1]
 
@@ -69,31 +67,62 @@ def detect_scam(text):
 
     return min(score, 100)
 
-# ---------------- HOME (NEW UI) ----------------
+# ---------------- HOME ----------------
 @app.route("/", methods=["GET", "POST"])
 def home():
     score = None
     message = ""
 
-    # 🔥 FREE LIMIT SYSTEM
+    # FREE LIMIT
     if "checks" not in session:
         session["checks"] = 0
 
     if request.method == "POST":
 
-        # ❌ BLOCK AFTER 3 USES
+        # LIMIT REACHED → SHOW PAYMENT
         if session["checks"] >= 3:
-            return """
+            return render_template_string("""
             <h2>🚫 Free limit reached</h2>
             <p>You have used your 3 free checks.</p>
-            <p>Upgrade to continue.</p>
-            """
+
+            <button onclick="pay()">💳 Pay ₦2000 to continue</button>
+
+            <script src="https://js.paystack.co/v1/inline.js"></script>
+            <script>
+            function pay() {
+                let handler = PaystackPop.setup({
+                    key: 'YOUR_PAYSTACK_PUBLIC_KEY',
+                    email: 'user@email.com',
+                    amount: 200000,
+
+                    callback: function(response){
+                        alert('Payment successful!');
+                        location.reload();
+                    },
+
+                    onClose: function(){
+                        alert('Payment cancelled');
+                    }
+                });
+
+                handler.openIframe();
+            }
+            </script>
+            """)
 
         message = request.form["message"]
         score = detect_scam(message)
 
-        # ✅ INCREASE COUNT
         session["checks"] += 1
+
+        # SAVE HISTORY
+        if "user" in session:
+            conn = sqlite3.connect("database.db")
+            c = conn.cursor()
+            c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
+                      (session["user"], message, score))
+            conn.commit()
+            conn.close()
 
     return render_template_string("""
     <!DOCTYPE html>
@@ -127,6 +156,11 @@ def home():
             .result {
                 margin-top: 20px;
                 font-size: 20px;
+            }
+            .login {
+                margin-top: 20px;
+                display: block;
+                color: #38bdf8;
             }
         </style>
     </head>
@@ -146,82 +180,11 @@ def home():
             </div>
         {% endif %}
 
-    </body>
-    </html>
-    """, score=score, message=message)
-
-    if request.method == "POST":
-        message = request.form["message"]
-        score = detect_scam(message)
-
-    return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>DetectorMax</title>
-        <style>
-            body {
-                background: #0f172a;
-                color: white;
-                font-family: Arial;
-                text-align: center;
-                padding: 50px;
-            }
-            h1 { font-size: 40px; }
-
-            textarea {
-                width: 80%;
-                height: 120px;
-                padding: 10px;
-                border-radius: 8px;
-                border: none;
-            }
-
-            button {
-                margin-top: 10px;
-                padding: 12px 25px;
-                background: #22c55e;
-                border: none;
-                border-radius: 8px;
-                color: white;
-                font-size: 16px;
-                cursor: pointer;
-            }
-
-            .result {
-                margin-top: 20px;
-                font-size: 20px;
-            }
-
-            .login {
-                margin-top: 20px;
-                display: block;
-                color: #38bdf8;
-            }
-        </style>
-    </head>
-    <body>
-
-        <h1>🛡 DetectorMax</h1>
-        <p>AI-powered scam detector</p>
-
-        <form method="post">
-            <textarea name="message" placeholder="Paste message here...">{{message}}</textarea><br>
-            <button>Check Message</button>
-        </form>
-
-        {% if score is not none %}
-            <div class="result">
-                Scam Score: <b>{{score}}%</b>
-            </div>
-        {% endif %}
-
         <a class="login" href="/login">Login</a>
 
     </body>
     </html>
     """, score=score, message=message)
-
 
 # ---------------- LOGIN ----------------
 @app.route("/login", methods=["GET", "POST"])
@@ -237,7 +200,6 @@ def login():
         <button>Login</button>
     </form>
     '''
-
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
