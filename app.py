@@ -75,6 +75,81 @@ def home():
     score = None
     message = ""
 
+    # 🔥 FREE LIMIT SYSTEM
+    if "checks" not in session:
+        session["checks"] = 0
+
+    if request.method == "POST":
+
+        # ❌ BLOCK AFTER 3 USES
+        if session["checks"] >= 3:
+            return """
+            <h2>🚫 Free limit reached</h2>
+            <p>You have used your 3 free checks.</p>
+            <p>Upgrade to continue.</p>
+            """
+
+        message = request.form["message"]
+        score = detect_scam(message)
+
+        # ✅ INCREASE COUNT
+        session["checks"] += 1
+
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DetectorMax</title>
+        <style>
+            body {
+                background: #0f172a;
+                color: white;
+                font-family: Arial;
+                text-align: center;
+                padding: 50px;
+            }
+            textarea {
+                width: 80%;
+                height: 120px;
+                padding: 10px;
+                border-radius: 8px;
+                border: none;
+            }
+            button {
+                margin-top: 10px;
+                padding: 12px 25px;
+                background: #22c55e;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                cursor: pointer;
+            }
+            .result {
+                margin-top: 20px;
+                font-size: 20px;
+            }
+        </style>
+    </head>
+    <body>
+
+        <h1>🛡 DetectorMax</h1>
+        <p>Free checks left: {{3 - session['checks']}}</p>
+
+        <form method="post">
+            <textarea name="message" placeholder="Paste message here...">{{message}}</textarea><br>
+            <button>Check Message</button>
+        </form>
+
+        {% if score is not none %}
+            <div class="result">
+                Scam Score: <b>{{score}}%</b>
+            </div>
+        {% endif %}
+
+    </body>
+    </html>
+    """, score=score, message=message)
+
     if request.method == "POST":
         message = request.form["message"]
         score = detect_scam(message)
