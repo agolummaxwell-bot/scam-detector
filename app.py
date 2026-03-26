@@ -1,6 +1,10 @@
 from flask import Flask, request, render_template_string
+from flask import session, redirect, url_for
+import sqlite3
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
+
 app = Flask(__name__)
 # AI Training Data
 messages = [
