@@ -139,7 +139,7 @@ HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Scam Detector AI</title>
+<title>ScamAI Dashboard</title>
 
 <style>
 body {
@@ -147,36 +147,46 @@ body {
     font-family: 'Segoe UI', sans-serif;
     background: #0f172a;
     color: white;
-}
-
-/* Navbar */
-.navbar {
-    background: #020617;
-    padding: 15px;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
 }
 
-.navbar a {
+/* Sidebar */
+.sidebar {
+    width: 220px;
+    height: 100vh;
+    background: #020617;
+    padding: 20px;
+    position: fixed;
+}
+
+.sidebar h2 {
     color: #22c55e;
-    text-decoration: none;
-    margin-left: 20px;
 }
 
-/* Container */
-.container {
-    max-width: 800px;
-    margin: 60px auto;
-    text-align: center;
+.sidebar a {
+    display: block;
+    margin: 20px 0;
+    color: #94a3b8;
+    text-decoration: none;
+}
+
+.sidebar a:hover {
+    color: white;
+}
+
+/* Main content */
+.main {
+    margin-left: 240px;
+    padding: 40px;
+    width: 100%;
 }
 
 /* Card */
 .card {
     background: #1e293b;
-    padding: 40px;
+    padding: 30px;
     border-radius: 15px;
-    box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+    max-width: 800px;
 }
 
 /* Input */
@@ -185,7 +195,6 @@ textarea {
     height: 150px;
     border-radius: 10px;
     padding: 15px;
-    font-size: 16px;
     border: none;
     outline: none;
 }
@@ -193,8 +202,7 @@ textarea {
 /* Button */
 button {
     margin-top: 20px;
-    padding: 12px 30px;
-    font-size: 18px;
+    padding: 10px 25px;
     border: none;
     border-radius: 8px;
     background: #22c55e;
@@ -208,8 +216,7 @@ button:hover {
 
 /* Result */
 .result {
-    margin-top: 30px;
-    font-size: 22px;
+    margin-top: 20px;
 }
 
 .safe { color: #22c55e; }
@@ -226,8 +233,6 @@ button:hover {
     height: 40px;
     animation: spin 1s linear infinite;
     display: none;
-    margin-left: auto;
-    margin-right: auto;
 }
 
 @keyframes spin {
@@ -246,23 +251,24 @@ function showLoader() {
 
 <body>
 
-<div class="navbar">
+<!-- Sidebar -->
+<div class="sidebar">
     <h2>🚨 ScamAI</h2>
-    <div>
-        <a href="/">Home</a>
-        <a href="/history">History</a>
-        <a href="/logout">Logout</a>
-    </div>
+    <a href="/">Dashboard</a>
+    <a href="/history">History</a>
+    <a href="/logout">Logout</a>
 </div>
 
-<div class="container">
+<!-- Main -->
+<div class="main">
+    <h1>Dashboard</h1>
+
     <div class="card">
 
-        <h1>Analyze Suspicious Message</h1>
+        <h2>Analyze Message</h2>
 
         <form method="post" onsubmit="showLoader()">
-            <textarea name="message" placeholder="Paste suspicious message here..."></textarea>
-            <br>
+            <textarea name="message" placeholder="Paste suspicious message..."></textarea>
             <button type="submit">Analyze</button>
         </form>
 
@@ -270,14 +276,14 @@ function showLoader() {
 
         {% if score is not none %}
             <div class="result">
-                <p>Scam Score: {{score}}%</p>
+                <p><strong>Scam Score:</strong> {{score}}%</p>
 
                 {% if score < 30 %}
-                    <p class="safe">✅ Safe</p>
+                    <p class="safe">Safe</p>
                 {% elif score < 70 %}
-                    <p class="warning">⚠️ Suspicious</p>
+                    <p class="warning">Suspicious</p>
                 {% else %}
-                    <p class="danger">🚨 High Risk Scam</p>
+                    <p class="danger">High Risk Scam</p>
                 {% endif %}
 
                 <p>{{ explanation }}</p>
