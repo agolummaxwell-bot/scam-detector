@@ -4,6 +4,40 @@ from sklearn.naive_bayes import MultinomialNB
 app = Flask(__name__)
 # AI Training Data
 messages = [
+    # 🚨 SCAM (1)
+    "You have won a prize claim now",
+    "Send money urgently to receive funds",
+    "Click here to win cash prize",
+    "Free investment opportunity",
+    "Verify your bank account now",
+    "Urgent transfer required now",
+    "Claim your reward immediately",
+    "You are selected as a winner",
+    "Send your details to receive money",
+    "Congratulations you won lottery",
+    "Click link to claim your money now",
+    "Account suspended verify now",
+    "You won $5000 click here now",
+    "Limited time offer act fast",
+    "Bitcoin investment double your money",
+
+    # ✅ NORMAL (0)
+    "Hello how are you doing today",
+    "Let's meet tomorrow",
+    "This is a normal message",
+    "Are you available for a call",
+    "See you later",
+    "Can we talk later",
+    "I will send the document tomorrow",
+    "Thank you for your help",
+    "Let's have lunch together",
+    "How is your family",
+    "Please review this file",
+    "Meeting starts at 3pm",
+    "Call me when you are free",
+    "I will arrive soon",
+    "Good morning have a great day"
+]
     "You have won a prize claim now",
     "Send money urgently",
     "Click here to win cash",
@@ -16,7 +50,7 @@ messages = [
     "See you later"
 ]
 
-labels = [1,1,1,1,1, 0,0,0,0,0]
+labels = [1]*15 + [0]*15
 
 vectorizer = TfidfVectorizer()
 X = vectorizer.fit_transform(messages)
@@ -24,61 +58,27 @@ X = vectorizer.fit_transform(messages)
 model = MultinomialNB()
 model.fit(X, labels)
 
-
-scam_keywords = [
-    "urgent", "send money", "gift", "package", "fee",
-    "crypto", "investment", "love", "secret", "manager",
-    "selected", "winner", "claim", "verify", "account"
-]
-
 def detect_scam(text):
     text = text.lower()
-    score = 0
 
-    high_risk = [
-        "bank account", "send money", "urgent", "transfer",
-        "click here", "verify your account", "bitcoin",
-        "investment opportunity", "claim now"
-    ]
+    # AI prediction
+    X_input = vectorizer.transform([text])
+    prediction = model.predict(X_input)[0]
+    probability = model.predict_proba(X_input)[0][1]
 
-    medium_risk = [
-        "win", "won", "prize", "winner", "free",
-        "money", "offer", "loan", "credit", "gift"
-    ]
+    score = int(probability * 100)
 
-    # 🚨 Strong signals
-    if "http://" in text or "https://" in text:
-        score += 30   # increased
-
-    if any(char.isdigit() for char in text):
-        score += 10   # increased
-
-    if text.count("!") >= 2:
-        score += 20   # increased
-
-    # 🔴 High risk words
-    for word in high_risk:
-        if word in text:
-            score += 30   # increased
-
-    # 🟠 Medium risk words
-    for word in medium_risk:
-        if word in text:
-            score += 15   # increased
-
-    # 🚨 BONUS: combo detection (THIS IS KEY)
-    if "win" in text and "money" in text:
+    # 🚨 Boost score for dangerous patterns
+    if "http" in text or "www" in text:
         score += 20
 
-    if "click" in text and "http" in text:
-        score += 25
+    if any(char.isdigit() for char in text):
+        score += 10
 
-    if "urgent" in text and "money" in text:
-        score += 25
+    if "urgent" in text:
+        score += 15
 
-    if score > 100:
-        score = 100
-
+    return min(score, 100)
     ret# AI prediction
 X_test = vectorizer.transform([text])
 ai_score = model.predict_proba(X_test)[0][1] * 100
