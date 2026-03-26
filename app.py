@@ -1,6 +1,29 @@
 from flask import Flask, request, render_template_string
-
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 app = Flask(__name__)
+# AI Training Data
+messages = [
+    "You have won a prize claim now",
+    "Send money urgently",
+    "Click here to win cash",
+    "Free investment opportunity",
+    "Verify your bank account now",
+    "Hello how are you doing today",
+    "Let's meet tomorrow",
+    "This is a normal message",
+    "Are you available for a call",
+    "See you later"
+]
+
+labels = [1,1,1,1,1, 0,0,0,0,0]
+
+vectorizer = TfidfVectorizer()
+X = vectorizer.fit_transform(messages)
+
+model = MultinomialNB()
+model.fit(X, labels)
+
 
 scam_keywords = [
     "urgent", "send money", "gift", "package", "fee",
@@ -56,7 +79,14 @@ def detect_scam(text):
     if score > 100:
         score = 100
 
-    return score
+    ret# AI prediction
+X_test = vectorizer.transform([text])
+ai_score = model.predict_proba(X_test)[0][1] * 100
+
+# Combine both systems
+final_score = int((score + ai_score) / 2)
+
+return min(final_score, 100)urn score
 HTML = """
 <!DOCTYPE html>
 <html>
