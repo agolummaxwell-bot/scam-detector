@@ -128,9 +128,9 @@ def home():
                     amount: 200000,
                     currency: "NGN",
 
-                    callback: function(response){
-                        window.location.href = "/verify?reference=" + response.reference;
-                    },
+                  callback: function(response){
+    window.location.href = "/verify?reference=" + response.reference;
+}
 
                     onClose: function(){
                         alert("Payment cancelled");
@@ -225,7 +225,7 @@ def verify():
     user = session.get("user")
 
     if not reference:
-        return "No reference"
+        return "No reference provided"
 
     url = f"https://api.paystack.co/transaction/verify/{reference}"
 
@@ -237,6 +237,7 @@ def verify():
     data = response.json()
 
     if data["status"] and data["data"]["status"] == "success":
+        # ✅ Payment verified
         set_paid(user)
         return redirect("/")
 
