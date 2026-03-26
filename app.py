@@ -1,6 +1,5 @@
 from flask import Flask, request, render_template_string, session, redirect
 import sqlite3
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
@@ -54,7 +53,6 @@ model.fit(X, labels)
 
 def detect_scam(text):
     text = text.lower()
-
     X_input = vectorizer.transform([text])
     probability = model.predict_proba(X_input)[0][1]
 
@@ -85,7 +83,7 @@ def home():
 
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
-        c.execute("INSERT INTO history VALUES (NULL, ?, ?, ?)",
+        c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
                   (session["user"], message, score))
         conn.commit()
         conn.close()
@@ -138,7 +136,10 @@ def history():
         medium=medium,
         low=low
     )
-    @app.route("/download")
+
+
+# ✅ FIXED (THIS WAS BROKEN BEFORE)
+@app.route("/download")
 def download():
     if "user" not in session:
         return redirect("/login")
@@ -157,7 +158,23 @@ def download():
         'Content-Type': 'text/csv',
         'Content-Disposition': 'attachment; filename=history.csv'
     }
+
+
 # ---------------- UI ----------------
+
+HTML = """
+<h1>🚨 Scam Detector</h1>
+<a href="/history">📊 View Analytics</a>
+<form method="post">
+<textarea name="message"></textarea><br>
+<button>Check</button>
+</form>
+
+{% if score is not none %}
+<p>Score: {{score}}%</p>
+<p>{{explanation}}</p>
+{% endif %}
+"""
 
 HISTORY_HTML = """
 <!DOCTYPE html>
@@ -243,3 +260,7 @@ new Chart(document.getElementById('chart'), {
 </body>
 </html>
 """
+
+# ---------------- RUN ----------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
