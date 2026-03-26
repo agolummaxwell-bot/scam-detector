@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template_string, session, redirect
 import sqlite3
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
@@ -53,6 +54,7 @@ model.fit(X, labels)
 
 def detect_scam(text):
     text = text.lower()
+
     X_input = vectorizer.transform([text])
     probability = model.predict_proba(X_input)[0][1]
 
@@ -67,38 +69,92 @@ def detect_scam(text):
 
     return min(score, 100)
 
-# ---------------- ROUTES ----------------
-
+# ---------------- HOME (NEW UI) ----------------
 @app.route("/", methods=["GET", "POST"])
 def home():
-    if "user" not in session:
-        return redirect("/login")
-
     score = None
-    explanation = ""
+    message = ""
 
     if request.method == "POST":
         message = request.form["message"]
         score = detect_scam(message)
 
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
-                  (session["user"], message, score))
-        conn.commit()
-        conn.close()
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DetectorMax</title>
+        <style>
+            body {
+                background: #0f172a;
+                color: white;
+                font-family: Arial;
+                text-align: center;
+                padding: 50px;
+            }
+            h1 { font-size: 40px; }
 
-        explanation = "AI + pattern detection used"
+            textarea {
+                width: 80%;
+                height: 120px;
+                padding: 10px;
+                border-radius: 8px;
+                border: none;
+            }
 
-    return render_template_string(HTML, score=score, explanation=explanation)
+            button {
+                margin-top: 10px;
+                padding: 12px 25px;
+                background: #22c55e;
+                border: none;
+                border-radius: 8px;
+                color: white;
+                font-size: 16px;
+                cursor: pointer;
+            }
+
+            .result {
+                margin-top: 20px;
+                font-size: 20px;
+            }
+
+            .login {
+                margin-top: 20px;
+                display: block;
+                color: #38bdf8;
+            }
+        </style>
+    </head>
+    <body>
+
+        <h1>🛡 DetectorMax</h1>
+        <p>AI-powered scam detector</p>
+
+        <form method="post">
+            <textarea name="message" placeholder="Paste message here...">{{message}}</textarea><br>
+            <button>Check Message</button>
+        </form>
+
+        {% if score is not none %}
+            <div class="result">
+                Scam Score: <b>{{score}}%</b>
+            </div>
+        {% endif %}
+
+        <a class="login" href="/login">Login</a>
+
+    </body>
+    </html>
+    """, score=score, message=message)
 
 
+# ---------------- LOGIN ----------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         session["user"] = request.form["username"]
         return redirect("/")
-    
+
     return '''
     <h2>Login</h2>
     <form method="post">
@@ -108,159 +164,6 @@ def login():
     '''
 
 
-@app.route("/history")
-def history():
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-    c.execute("SELECT message, score FROM history WHERE username=?", (session["user"],))
-    data = c.fetchall()
-    conn.close()
-
-    scores = [row[1] for row in data]
-
-    total = len(scores)
-    avg = int(sum(scores)/total) if total else 0
-
-    high = len([s for s in scores if s > 70])
-    medium = len([s for s in scores if 30 <= s <= 70])
-    low = len([s for s in scores if s < 30])
-
-    return render_template_string(HISTORY_HTML,
-        scores=scores,
-        total=total,
-        avg=avg,
-        high=high,
-        medium=medium,
-        low=low
-    )
-
-
-# ✅ FIXED (THIS WAS BROKEN BEFORE)
-@app.route("/download")
-def download():
-    if "user" not in session:
-        return redirect("/login")
-
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-    c.execute("SELECT message, score FROM history WHERE username=?", (session["user"],))
-    data = c.fetchall()
-    conn.close()
-
-    csv_data = "Message,Score\n"
-    for msg, score in data:
-        csv_data += f"{msg},{score}\n"
-
-    return csv_data, 200, {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': 'attachment; filename=history.csv'
-    }
-
-
-# ---------------- UI ----------------
-
-HTML = """
-<h1>🚨 Scam Detector</h1>
-<a href="/history">📊 View Analytics</a>
-<form method="post">
-<textarea name="message"></textarea><br>
-<button>Check</button>
-</form>
-
-{% if score is not none %}
-<p>Score: {{score}}%</p>
-<p>{{explanation}}</p>
-{% endif %}
-"""
-
-HISTORY_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<title>Dashboard</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-body {
-    background: #0f172a;
-    color: white;
-    font-family: Arial;
-    padding: 30px;
-}
-
-h1 { text-align: center; }
-
-.grid {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.card {
-    flex: 1;
-    background: #1e293b;
-    padding: 20px;
-    border-radius: 12px;
-    text-align: center;
-}
-
-.big { font-size: 28px; }
-
-button {
-    padding: 10px 20px;
-    background: #22c55e;
-    border: none;
-    border-radius: 8px;
-    color: white;
-    cursor: pointer;
-}
-</style>
-
-</head>
-
-<body>
-
-<h1>📊 Your Analytics</h1>
-
-<div class="grid">
-    <div class="card"><p>Total</p><div class="big">{{total}}</div></div>
-    <div class="card"><p>Avg Score</p><div class="big">{{avg}}%</div></div>
-    <div class="card"><p>High Risk</p><div class="big">{{high}}</div></div>
-    <div class="card"><p>Medium</p><div class="big">{{medium}}</div></div>
-    <div class="card"><p>Safe</p><div class="big">{{low}}</div></div>
-</div>
-
-<div class="card">
-    <canvas id="chart"></canvas>
-</div>
-
-<br>
-<a href="/download"><button>⬇ Download CSV</button></a>
-
-<script>
-const scores = {{scores|tojson}};
-
-new Chart(document.getElementById('chart'), {
-    type: 'line',
-    data: {
-        labels: scores.map((_, i) => "Scan " + (i+1)),
-        datasets: [{
-            label: 'Scam Score',
-            data: scores,
-            borderWidth: 2
-        }]
-    }
-});
-</script>
-
-</body>
-</html>
-"""
-
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run()
