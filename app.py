@@ -107,11 +107,16 @@ def home():
         return redirect("/login")
 
     user_data = get_user(user)
+
+    if not user_data:
+        return "User not found"
+
     paid = user_data[0]
     checks = user_data[1]
 
     if request.method == "POST":
 
+        # 🚫 LIMIT
         if not paid and checks >= 3:
             return render_template_string("""
             <h2>🚫 Free limit reached</h2>
@@ -128,9 +133,9 @@ def home():
                     amount: 200000,
                     currency: "NGN",
 
-                  callback: function(response){
-    window.location.href = "/verify?reference=" + response.reference;
-}
+                    callback: function(response){
+                        window.location.href = "/verify?reference=" + response.reference;
+                    },
 
                     onClose: function(){
                         alert("Payment cancelled");
@@ -156,38 +161,13 @@ def home():
         conn.close()
 
     return render_template_string("""
-    <!DOCTYPE html>
     <html>
     <head>
         <title>DetectorMax</title>
         <style>
-            body {
-                background: #0f172a;
-                color: white;
-                font-family: Arial;
-                text-align: center;
-                padding: 50px;
-            }
-            textarea {
-                width: 80%;
-                height: 120px;
-                padding: 10px;
-                border-radius: 8px;
-                border: none;
-            }
-            button {
-                margin-top: 10px;
-                padding: 12px 25px;
-                background: #22c55e;
-                border: none;
-                border-radius: 8px;
-                color: white;
-                cursor: pointer;
-            }
-            .result {
-                margin-top: 20px;
-                font-size: 20px;
-            }
+            body { background:#0f172a; color:white; text-align:center; padding:50px; }
+            textarea { width:80%; height:120px; border-radius:8px; }
+            button { padding:12px 25px; background:#22c55e; border:none; border-radius:8px; color:white; }
         </style>
     </head>
     <body>
@@ -201,14 +181,12 @@ def home():
         {% endif %}
 
         <form method="post">
-            <textarea name="message" placeholder="Paste message here...">{{message}}</textarea><br>
+            <textarea name="message">{{message}}</textarea><br>
             <button>Check Message</button>
         </form>
 
         {% if score is not none %}
-            <div class="result">
-                Scam Score: <b>{{score}}%</b>
-            </div>
+            <h3>Scam Score: {{score}}%</h3>
         {% endif %}
 
         <br><br>
@@ -224,8 +202,8 @@ def verify():
     reference = request.args.get("reference")
     user = session.get("user")
 
-    if not reference:
-        return "No reference provided"
+    if not reference or not user:
+        return "Invalid request"
 
     url = f"https://api.paystack.co/transaction/verify/{reference}"
 
@@ -233,13 +211,16 @@ def verify():
         "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"
     }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
 
-    if data["status"] and data["data"]["status"] == "success":
-        # ✅ Payment verified
-        set_paid(user)
-        return redirect("/")
+        if data["status"] and data["data"]["status"] == "success":
+            set_paid(user)
+            return redirect("/")
+
+    except:
+        return "Verification error"
 
     return "Payment verification failed"
 
