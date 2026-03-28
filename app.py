@@ -208,13 +208,57 @@ def register():
         except:
             return "User exists"
 
-    return '''
-    <form method="post">
-    <input name="username">
-    <input name="password" type="password">
-    <button>Register</button>
-    </form>
-    '''
+   return """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - DetectorMax</title>
+    <style>
+        body {
+            background: #020617;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+            padding-top: 100px;
+        }
+
+        input {
+            padding: 12px;
+            margin: 10px;
+            border-radius: 8px;
+            border: none;
+            width: 250px;
+        }
+
+        button {
+            padding: 12px 30px;
+            background: #22c55e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        a {
+            color: #60a5fa;
+        }
+    </style>
+</head>
+<body>
+
+<h1>🔐 Login to DetectorMax</h1>
+
+<form method="post">
+    <input name="username" placeholder="Username" required><br>
+    <input name="password" type="password" placeholder="Password" required><br><br>
+    <button type="submit">Login</button>
+</form>
+
+<p>New user? <a href="/register">Create account</a></p>
+
+</body>
+</html>
+"""
 
 @app.route("/login", methods=["GET","POST"])
 def login():
