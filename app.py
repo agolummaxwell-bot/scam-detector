@@ -20,7 +20,8 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 
 app = Flask(__name__)
-app.secret_key = "your-very-strong-secret-key-change-in-production-2026"
+import os
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
 
 # ====================== PAYSTACK CONFIG ======================
 PAYSTACK_SECRET_KEY = "sk_test_917114ef65bc6471f416567126bac1e625d127df"
@@ -86,67 +87,130 @@ class ScamFeatureExtractor(BaseEstimator, TransformerMixin):
         return np.array(features)
 
 # ====================== LOAD OR TRAIN MODEL ======================
-MODEL_PATH = 'advanced_scam_detector_v2.pkl'
+import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
+
+MODEL_PATH = 'advanced_scam_detector_v3.pkl'
 
 try:
     model = joblib.load(MODEL_PATH)
-    print("✅ Loaded existing advanced scam detection model")
+    print("✅ Loaded improved model")
 except:
-    print("🔄 Training new advanced model...")
+    print("🔄 Training improved model...")
+
     scam_messages = [
-        "Congratulations! You have won a $1,000,000 prize. Claim now!",
-        "Urgent! Send $500 via Western Union immediately.",
-        "My love, I am stuck abroad and need help with hospital bill.",
-        "Your account has been suspended. Verify now or lose access.",
-        "Double your money in 7 days with crypto - 100% guaranteed."
+        "Congratulations! You have won $1,000,000. Claim now!",
+        "Urgent! Send money immediately to receive funds.",
+        "Your bank account is locked. Verify now.",
+        "Investment opportunity with guaranteed returns",
+        "Click this link to claim your reward now",
+        "Send your OTP now",
+        "Act fast before it expires",
+        "You are selected for a grant",
+        "Pay clearance fee to receive package",
+        "We need your bank details urgently"
     ]
 
     legit_messages = [
-        "Hello, how are you doing today?",
-        "Let's meet tomorrow at 2pm.",
-        "Thank you for your help.",
-        "Good morning, please review the document.",
-        "Happy birthday!"
+        "Hello how are you?",
+        "Let's meet tomorrow",
+        "Please review this document",
+        "Happy birthday bro",
+        "Lunch at 2pm?",
+        "Call me when you’re free",
+        "Thanks for your help",
+        "See you later",
+        "Good morning",
+        "Let’s schedule a meeting"
     ]
 
-    messages = scam_messages * 5 + legit_messages * 5
-    labels = [1] * len(scam_messages * 5) + [0] * len(legit_messages * 5)
+    texts = scam_messages * 20 + legit_messages * 20
+    labels = [1]*len(scam_messages*20) + [0]*len(legit_messages*20)
 
-    preprocessor = ColumnTransformer([
-        ('tfidf', TfidfVectorizer(ngram_range=(1, 3), min_df=2, max_df=0.9, stop_words='english'), 'text'),
-        ('features', ScamFeatureExtractor(), 'text')
+    df = pd.DataFrame({"text": texts})
+
+    pipeline = Pipeline([
+        ("tfidf", TfidfVectorizer(
+            ngram_range=(1,2),
+            min_df=2,
+            max_df=0.95,
+            sublinear_tf=True
+        )),
+        ("clf", LogisticRegression(max_iter=3000, class_weight="balanced"))
     ])
 
-    model = Pipeline([
-        ('preprocessor', preprocessor),
-        ('scaler', StandardScaler(with_mean=False)),
-        ('clf', LogisticRegression(class_weight='balanced', max_iter=2000, C=1.5, random_state=42))
-    ])
+    calibrated_model = CalibratedClassifierCV(pipeline, method='sigmoid')
 
-    X_train_text = [m for m in messages]
-    model.fit(X_train_text, labels)
+    calibrated_model.fit(df["text"], labels)
+
+    model = calibrated_model
     joblib.dump(model, MODEL_PATH)
-    print("✅ Model trained and saved successfully")
+
+    print("✅ Improved model trained")
 
 # ====================== DETECTION FUNCTION ======================
-def detect_scam_advanced(text: str, threshold: float = 0.58):
+def detect_scam_advanced(text: str, threshold: float = 0.60):
     if not text or len(text.strip()) < 5:
-        return {"is_scam": False, "scam_probability": 0.0, "recommendation": "Message too short", "matched_keywords": []}
-
-    prob = model.predict_proba([text])[0][1]
-    is_scam = prob >= threshold
+        return {
+            "is_scam": False,
+            "scam_probability": 0.0,
+            "confidence": "Low",
+            "recommendation": "Message too short",
+            "matched_keywords": []
+        }
 
     text_lower = text.lower()
-    matched_keywords = [kw for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower][:6]
+
+    # ML probability
+    prob = model.predict_proba([text])[0][1]
+
+    # RULE BOOSTING (VERY IMPORTANT)
+    score_boost = 0
+
+    # Keywords
+    matched_keywords = []
+    for kw in ALL_SCAM_INDICATORS:
+        if kw in text_lower:
+            score_boost += 0.03
+            matched_keywords.append(kw)
+
+    # Links
+    if re.search(r"http[s]?://", text_lower):
+        score_boost += 0.10
+
+    # Money patterns
+    if re.search(r"\$\d+|\d+naira|\d{5,}", text_lower):
+        score_boost += 0.08
+
+    # Urgency
+    if any(w in text_lower for w in ["urgent", "now", "asap", "immediately"]):
+        score_boost += 0.05
+
+    # ALL CAPS
+    if text.isupper():
+        score_boost += 0.05
+
+    # Final probability
+    final_prob = min(prob + score_boost, 1.0)
+
+    is_scam = final_prob >= threshold
 
     return {
         "is_scam": bool(is_scam),
-        "scam_probability": round(float(prob * 100), 1),
-        "confidence": "High" if abs(prob - 0.5) > 0.35 else "Medium",
-        "matched_keywords": matched_keywords,
-        "recommendation": "🚨 HIGH RISK - BLOCK & REPORT" if is_scam else "✅ Likely Legitimate"
+        "scam_probability": round(final_prob * 100, 1),
+        "confidence": (
+            "High" if final_prob > 0.8 or final_prob < 0.2
+            else "Medium" if abs(final_prob - 0.5) > 0.15
+            else "Low"
+        ),
+        "matched_keywords": matched_keywords[:6],
+        "recommendation": (
+            "🚨 HIGH RISK - BLOCK & REPORT"
+            if is_scam else
+            "⚠️ Be cautious" if final_prob > 0.4 else
+            "✅ Likely Legitimate"
+        )
     }
-
 # ====================== DATABASE HELPERS ======================
 def get_user(username):
     conn = sqlite3.connect("database.db")
@@ -207,7 +271,7 @@ def home():
             function payWithPaystack(){
                 var handler = PaystackPop.setup({
                     key: '{{ public_key }}',
-                    email: 'user@example.com',
+                    email: '{{ session["user"] }}@detectormax.com',
                     amount: 200000,
                     currency: "NGN",
                     callback: function(response){
@@ -220,12 +284,23 @@ def home():
             """, public_key=PAYSTACK_PUBLIC_KEY)
 
         message_text = request.form.get("message", "").strip()
-        if message_text:
-            result = detect_scam_advanced(message_text)
-            if not paid:
-                update_checks(username)
-            save_history(username, message_text, result)
+       if message_text:
 
+    # 🚫 Anti-spam / length protection
+    if len(message_text) > 1000:
+        return render_template_string("""
+            <h2>🚫 Message too long</h2>
+            <p>Please keep your message under 1000 characters.</p>
+            <a href="/">⬅ Go Back</a>
+        """)
+
+    # ✅ Run AI detection
+    result = detect_scam_advanced(message_text)
+
+    if not paid:
+        update_checks(username)
+
+    save_history(username, message_text, result)
     return render_template_string("""
     <!DOCTYPE html>
     <html>
