@@ -34,44 +34,230 @@ def init_db():
 
 init_db()
 
-# ---------------- AI ----------------
-messages = [
-    "You have won a prize claim now",
-    "Send money urgently to receive funds",
-    "Click here to win cash prize",
-    "Free investment opportunity",
-    "Verify your bank account now",
-    "Urgent transfer required now",
-    "Hello how are you doing today",
-    "Let's meet tomorrow",
-    "This is a normal message",
-    "Are you available for a call"
+import re
+import joblib
+import numpy as np
+from datetime import datetime
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
+
+# ====================== ADVANCED SCAM INDICATORS (2026 Edition) ======================
+SCAM_KEYWORDS = [
+    # Urgency & Pressure
+    "urgent", "immediately", "asap", "right now", "today only", "limited time", "act now", "last chance",
+    "before it's too late", "expire", "final notice", "hurry", "don't delay", "24 hours", "48 hours",
+
+    # Prize, Lottery, Winner
+    "congratulations", "you have won", "lucky winner", "prize", "jackpot", "selected", "claim now",
+    "collect your winnings", "winner alert", "you are the winner",
+
+    # Financial Promises & Greed
+    "guaranteed returns", "double your money", "100% guaranteed", "risk free", "no risk", "high yield",
+    "passive income", "financial freedom", "earn cash", "make money fast", "investment opportunity",
+    "multiply your investment", "crypto investment", "forex", "bitcoin", "usdt", "multiply",
+
+    # Money Transfer & Fees
+    "send money", "wire transfer", "western union", "moneygram", "mtcn", "processing fee", "clearance fee",
+    "customs duty", "activation fee", "release the funds", "overpayment", "refund", "return the balance",
+
+    # Account & Security
+    "account suspended", "account locked", "verify your account", "confirm identity", "security alert",
+    "unusual activity", "reset your password", "login now", "update your details", "card blocked",
+
+    # Romance & Emotional
+    "my love", "darling", "sweetheart", "honey", "i need your help", "stuck abroad", "hospital bill",
+    "my mother is sick", "emergency", "please help me", "god bless you",
+
+    # Impersonation & Official
+    "irs", "tax refund", "government grant", "inheritance", "unclaimed funds", "barrister", "lawyer fees",
+    "diplomat", "prince", "federal agent",
+
+    # Job & Opportunity
+    "work from home", "no experience needed", "earn thousands weekly", "secret shopper", "mystery shopper",
+
+    # Delivery & Package
+    "your package", "delivery issue", "undelivered", "pay customs", "shipping fee", "held at customs",
+
+    # Crypto & Modern Scams (2025-2026)
+    "pig butchering", "recovery scam", "scam coins", "deepfake", "ai generated", "tap to pay",
+
+    # Nigerian / 419 Specific (highly relevant for Lagos)
+    "419", "yahoo boy", "yahoo yahoo", "one chance", "herbalist", "spiritualist", "native doctor",
+    "juju", "ritual", "uba", "zenith", "gtbank", "first bank", "customs clearance", "airport release",
+    "trapped funds", "confidential transaction", "strictest confidence"
 ]
 
-labels = [1,1,1,1,1,1,0,0,0,0]
+# Additional high-signal spam-like phrases from recent trends
+EXTRA_PHRASES = [
+    "this is not a scam", "100% satisfied", "no catch", "act immediately", "offer expires",
+    "free money", "instant cash", "get paid", "life changing", "miracle", "cure", "lose weight",
+    "as seen on", "buy direct", "clearance", "order now", "don't delete"
+]
 
-vectorizer = TfidfVectorizer()
-X = vectorizer.fit_transform(messages)
+ALL_SCAM_INDICATORS = list(set(SCAM_KEYWORDS + EXTRA_PHRASES))
 
-model = MultinomialNB()
-model.fit(X, labels)
+class ScamFeatureExtractor(BaseEstimator, TransformerMixin):
+    """Custom transformer for advanced hand-crafted features"""
+    def fit(self, X, y=None):
+        return self
 
-def detect_scam(text):
-    text = text.lower()
-    X_input = vectorizer.transform([text])
-    probability = model.predict_proba(X_input)[0][1]
+    def transform(self, X):
+        features = []
+        for text in X:
+            text_lower = text.lower()
+            length = len(text)
+            caps_ratio = sum(1 for c in text if c.isupper()) / (length + 1)
+            punct_count = len(re.findall(r'[!?.,;]', text))
+            excl_count = text.count('!') + text.count('?')
+            keyword_hits = sum(1 for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower)
+            urgency_score = sum(1 for word in ["urgent", "immediately", "now", "asap", "today"] if word in text_lower)
 
-    score = int(probability * 100)
+            features.append([
+                length,
+                caps_ratio,
+                punct_count,
+                excl_count,
+                keyword_hits,
+                urgency_score
+            ])
+        return np.array(features)
 
-    if "http" in text:
-        score += 20
-    if any(char.isdigit() for char in text):
-        score += 10
-    if "urgent" in text:
-        score += 15
+# ====================== TRAINING DATA (Expanded & Balanced) ======================
+scam_messages = [
+    "Congratulations! You have won a $1,000,000 prize. Claim your winnings now by clicking the link.",
+    "Urgent! Send $500 via Western Union to release your trapped inheritance funds immediately.",
+    "Dear friend, my mother is very sick in hospital. Please help me with $300 for the bill.",
+    "Your account has been suspended due to unusual activity. Verify now or lose access.",
+    "Investment opportunity! Double your money in 7 days with crypto. 100% guaranteed returns.",
+    "Your package is held at Lagos customs. Pay ₦150,000 clearance fee today to release it.",
+    "You are the lucky winner of an iPhone 15 Pro. Click here to claim before it expires.",
+    "I am a diplomat needing your assistance to transfer $10 million. Strictest confidence required.",
+    "Reset your password immediately or your bank account will be permanently locked.",
+    "Work from home and earn $5000 weekly. No experience needed. Start today!"
+]
 
-    return min(score, 100)
+legit_messages = [
+    "Hello, how are you doing today? Hope everything is fine.",
+    "Let's schedule a meeting for tomorrow at 2 PM. Are you available?",
+    "Thank you for your help with the project last week.",
+    "Good morning sir, please review the attached invoice.",
+    "Happy birthday! Wishing you all the best.",
+    "Can we reschedule the call to Friday afternoon?",
+    "The payment was processed successfully. Receipt attached.",
+    "I'll be in Lagos next month for the conference. Let's catch up.",
+    "What time works best for you on Wednesday?",
+    "Have a great weekend! See you on Monday."
+]
 
+# Expand dataset for better training (you can add hundreds more later)
+messages = scam_messages * 3 + legit_messages * 3   # simple augmentation for balance
+labels = [1] * len(scam_messages * 3) + [0] * len(legit_messages * 3)
+
+# ====================== ADVANCED PIPELINE ======================
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('tfidf', TfidfVectorizer(
+            ngram_range=(1, 3),
+            min_df=2,
+            max_df=0.9,
+            stop_words='english',
+            lowercase=True,
+            strip_accents='ascii'
+        ), 'text'),
+        ('features', ScamFeatureExtractor(), 'text')
+    ],
+    remainder='drop'
+)
+
+model = Pipeline([
+    ('preprocessor', preprocessor),
+    ('scaler', StandardScaler(with_mean=False)),  # handles sparse data
+    ('clf', LogisticRegression(
+        class_weight='balanced',
+        max_iter=2000,
+        C=1.5,
+        solver='liblinear',
+        random_state=42
+    ))
+])
+
+# Split and train
+X_train, X_test, y_train, y_test = train_test_split(
+    [{'text': msg} for msg in messages], labels, test_size=0.2, random_state=42, stratify=labels
+)
+
+# Convert back to lists for pipeline
+X_train_text = [x['text'] for x in X_train]
+X_test_text = [x['text'] for x in X_test]
+
+model.fit(X_train_text, y_train)
+
+# Evaluation
+y_pred = model.predict(X_test_text)
+print("✅ Model Training Complete!")
+print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Scam']))
+
+# Save model
+joblib.dump(model, 'advanced_scam_detector_v2.pkl')
+print(f"Model saved as 'advanced_scam_detector_v2.pkl' at {datetime.now()}")
+
+# ====================== SMART PREDICTION FUNCTION ======================
+def detect_scam_advanced(text: str, threshold: float = 0.60) -> dict:
+    """Highly accurate scam detection with explanation"""
+    if not text or len(text.strip()) < 5:
+        return {"is_scam": False, "scam_probability": 0.0, "reason": "Message too short"}
+
+    prob = model.predict_proba([text])[0][1]
+    is_scam = prob >= threshold
+
+    # Keyword analysis for transparency
+    text_lower = text.lower()
+    matched_keywords = [kw for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower]
+
+    # Feature insights
+    length = len(text)
+    caps_ratio = sum(1 for c in text if c.isupper()) / (length + 1)
+    excl_count = text.count('!') + text.count('?')
+
+    confidence = "High" if abs(prob - 0.5) > 0.35 else "Medium"
+
+    return {
+        "is_scam": bool(is_scam),
+        "scam_probability": round(float(prob), 4),
+        "confidence": confidence,
+        "matched_keywords": matched_keywords[:8],  # top signals
+        "message_length": length,
+        "caps_ratio": round(caps_ratio, 3),
+        "exclamation_count": excl_count,
+        "recommendation": "🚨 HIGH RISK - BLOCK & REPORT" if is_scam else "✅ Likely Legitimate",
+        "timestamp": datetime.now().isoformat()
+    }
+
+# ====================== TEST THE UPGRADED DETECTOR ======================
+test_cases = [
+    "Congratulations you won ₦50 million lottery. Send your bank details immediately to claim.",
+    "Hi team, can we have the meeting at 3pm tomorrow?",
+    "Urgent: Your account is under review. Verify now using this link or it will be suspended.",
+    "Good afternoon, please find the updated contract attached. Let me know your thoughts.",
+    "My love, I am stuck overseas and need $400 for hospital. Please help me quickly."
+]
+
+print("\n🚀 Testing Advanced Scam Detector:")
+for msg in test_cases:
+    result = detect_scam_advanced(msg)
+    print(f"\nMessage: {msg[:80]}{'...' if len(msg)>80 else ''}")
+    print(f"Result : {result['recommendation']}")
+    print(f"Probability: {result['scam_probability']} | Confidence: {result['confidence']}")
+    if result['matched_keywords']:
+        print(f"Key signals: {', '.join(result['matched_keywords'][:5])}")
 # ---------------- HELPERS ----------------
 def get_user(username):
     conn = sqlite3.connect("database.db")
