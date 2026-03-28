@@ -1,43 +1,15 @@
-from flask import Flask, request, render_template_string, session, redirect
-import sqlite3
-import requests
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-
-app = Flask(__name__)
-app.secret_key = "secret123"
-
-# 🔐 PAYSTACK SECRET KEY
-PAYSTACK_SECRET_KEY = "sk_test_917114ef65bc6471f416567126bac1e625d127df"
-
-# ---------------- DB ----------------
-def init_db():
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        paid INTEGER DEFAULT 0,
-        checks INTEGER DEFAULT 0
-    )''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        message TEXT,
-        score INTEGER
-    )''')
-
-    conn.commit()
-    conn.close()
-
-init_db()
-
 import re
 import joblib
+import sqlite3
+import requests
 import numpy as np
 from datetime import datetime
+
+from flask import Flask, request, render_template_string, session, redirect, url_for
+
+# Password Hashing
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -47,63 +19,57 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 
-# ====================== ADVANCED SCAM INDICATORS (2026 Edition) ======================
+app = Flask(__name__)
+app.secret_key = "your-very-strong-secret-key-change-in-production-2026"
+
+# ====================== PAYSTACK CONFIG ======================
+PAYSTACK_SECRET_KEY = "sk_test_917114ef65bc6471f416567126bac1e625d127df"
+PAYSTACK_PUBLIC_KEY = "pk_test_53472e03ba2d63a4a5f9de9c49d88e901a2ab56a"
+
+# ====================== DATABASE SETUP ======================
+def init_db():
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        paid INTEGER DEFAULT 0,
+        checks INTEGER DEFAULT 0
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        message TEXT,
+        scam_probability REAL,
+        is_scam INTEGER,
+        timestamp TEXT
+    )''')
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ====================== ADVANCED SCAM INDICATORS ======================
 SCAM_KEYWORDS = [
-    # Urgency & Pressure
     "urgent", "immediately", "asap", "right now", "today only", "limited time", "act now", "last chance",
     "before it's too late", "expire", "final notice", "hurry", "don't delay", "24 hours", "48 hours",
-
-    # Prize, Lottery, Winner
-    "congratulations", "you have won", "lucky winner", "prize", "jackpot", "selected", "claim now",
-    "collect your winnings", "winner alert", "you are the winner",
-
-    # Financial Promises & Greed
-    "guaranteed returns", "double your money", "100% guaranteed", "risk free", "no risk", "high yield",
-    "passive income", "financial freedom", "earn cash", "make money fast", "investment opportunity",
-    "multiply your investment", "crypto investment", "forex", "bitcoin", "usdt", "multiply",
-
-    # Money Transfer & Fees
+    "congratulations", "you have won", "lucky winner", "prize", "jackpot", "claim now",
+    "guaranteed returns", "double your money", "100% guaranteed", "high yield", "investment opportunity",
     "send money", "wire transfer", "western union", "moneygram", "mtcn", "processing fee", "clearance fee",
-    "customs duty", "activation fee", "release the funds", "overpayment", "refund", "return the balance",
-
-    # Account & Security
-    "account suspended", "account locked", "verify your account", "confirm identity", "security alert",
-    "unusual activity", "reset your password", "login now", "update your details", "card blocked",
-
-    # Romance & Emotional
-    "my love", "darling", "sweetheart", "honey", "i need your help", "stuck abroad", "hospital bill",
-    "my mother is sick", "emergency", "please help me", "god bless you",
-
-    # Impersonation & Official
-    "irs", "tax refund", "government grant", "inheritance", "unclaimed funds", "barrister", "lawyer fees",
-    "diplomat", "prince", "federal agent",
-
-    # Job & Opportunity
-    "work from home", "no experience needed", "earn thousands weekly", "secret shopper", "mystery shopper",
-
-    # Delivery & Package
-    "your package", "delivery issue", "undelivered", "pay customs", "shipping fee", "held at customs",
-
-    # Crypto & Modern Scams (2025-2026)
-    "pig butchering", "recovery scam", "scam coins", "deepfake", "ai generated", "tap to pay",
-
-    # Nigerian / 419 Specific (highly relevant for Lagos)
+    "account suspended", "account locked", "verify your account", "reset your password", "login now",
+    "my love", "darling", "sweetheart", "i need your help", "stuck abroad", "hospital bill",
     "419", "yahoo boy", "yahoo yahoo", "one chance", "herbalist", "spiritualist", "native doctor",
-    "juju", "ritual", "uba", "zenith", "gtbank", "first bank", "customs clearance", "airport release",
-    "trapped funds", "confidential transaction", "strictest confidence"
+    "juju", "ritual", "uba", "zenith", "gtbank", "first bank", "customs clearance", "airport release"
 ]
 
-# Additional high-signal spam-like phrases from recent trends
-EXTRA_PHRASES = [
-    "this is not a scam", "100% satisfied", "no catch", "act immediately", "offer expires",
-    "free money", "instant cash", "get paid", "life changing", "miracle", "cure", "lose weight",
-    "as seen on", "buy direct", "clearance", "order now", "don't delete"
-]
-
+EXTRA_PHRASES = ["this is not a scam", "free money", "instant cash", "life changing", "act immediately"]
 ALL_SCAM_INDICATORS = list(set(SCAM_KEYWORDS + EXTRA_PHRASES))
 
 class ScamFeatureExtractor(BaseEstimator, TransformerMixin):
-    """Custom transformer for advanced hand-crafted features"""
     def fit(self, X, y=None):
         return self
 
@@ -113,152 +79,75 @@ class ScamFeatureExtractor(BaseEstimator, TransformerMixin):
             text_lower = text.lower()
             length = len(text)
             caps_ratio = sum(1 for c in text if c.isupper()) / (length + 1)
-            punct_count = len(re.findall(r'[!?.,;]', text))
             excl_count = text.count('!') + text.count('?')
             keyword_hits = sum(1 for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower)
-            urgency_score = sum(1 for word in ["urgent", "immediately", "now", "asap", "today"] if word in text_lower)
-
-            features.append([
-                length,
-                caps_ratio,
-                punct_count,
-                excl_count,
-                keyword_hits,
-                urgency_score
-            ])
+            urgency_score = sum(1 for w in ["urgent", "immediately", "now", "asap", "today"] if w in text_lower)
+            features.append([length, caps_ratio, excl_count, keyword_hits, urgency_score])
         return np.array(features)
 
-# ====================== TRAINING DATA (Expanded & Balanced) ======================
-scam_messages = [
-    "Congratulations! You have won a $1,000,000 prize. Claim your winnings now by clicking the link.",
-    "Urgent! Send $500 via Western Union to release your trapped inheritance funds immediately.",
-    "Dear friend, my mother is very sick in hospital. Please help me with $300 for the bill.",
-    "Your account has been suspended due to unusual activity. Verify now or lose access.",
-    "Investment opportunity! Double your money in 7 days with crypto. 100% guaranteed returns.",
-    "Your package is held at Lagos customs. Pay ₦150,000 clearance fee today to release it.",
-    "You are the lucky winner of an iPhone 15 Pro. Click here to claim before it expires.",
-    "I am a diplomat needing your assistance to transfer $10 million. Strictest confidence required.",
-    "Reset your password immediately or your bank account will be permanently locked.",
-    "Work from home and earn $5000 weekly. No experience needed. Start today!"
-]
+# ====================== LOAD OR TRAIN MODEL ======================
+MODEL_PATH = 'advanced_scam_detector_v2.pkl'
 
-legit_messages = [
-    "Hello, how are you doing today? Hope everything is fine.",
-    "Let's schedule a meeting for tomorrow at 2 PM. Are you available?",
-    "Thank you for your help with the project last week.",
-    "Good morning sir, please review the attached invoice.",
-    "Happy birthday! Wishing you all the best.",
-    "Can we reschedule the call to Friday afternoon?",
-    "The payment was processed successfully. Receipt attached.",
-    "I'll be in Lagos next month for the conference. Let's catch up.",
-    "What time works best for you on Wednesday?",
-    "Have a great weekend! See you on Monday."
-]
+try:
+    model = joblib.load(MODEL_PATH)
+    print("✅ Loaded existing advanced scam detection model")
+except:
+    print("🔄 Training new advanced model...")
+    scam_messages = [
+        "Congratulations! You have won a $1,000,000 prize. Claim now!",
+        "Urgent! Send $500 via Western Union immediately.",
+        "My love, I am stuck abroad and need help with hospital bill.",
+        "Your account has been suspended. Verify now or lose access.",
+        "Double your money in 7 days with crypto - 100% guaranteed."
+    ]
 
-# Expand dataset for better training (you can add hundreds more later)
-messages = scam_messages * 3 + legit_messages * 3   # simple augmentation for balance
-labels = [1] * len(scam_messages * 3) + [0] * len(legit_messages * 3)
+    legit_messages = [
+        "Hello, how are you doing today?",
+        "Let's meet tomorrow at 2pm.",
+        "Thank you for your help.",
+        "Good morning, please review the document.",
+        "Happy birthday!"
+    ]
 
-# ====================== ADVANCED PIPELINE ======================
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('tfidf', TfidfVectorizer(
-            ngram_range=(1, 3),
-            min_df=2,
-            max_df=0.9,
-            stop_words='english',
-            lowercase=True,
-            strip_accents='ascii'
-        ), 'text'),
+    messages = scam_messages * 5 + legit_messages * 5
+    labels = [1] * len(scam_messages * 5) + [0] * len(legit_messages * 5)
+
+    preprocessor = ColumnTransformer([
+        ('tfidf', TfidfVectorizer(ngram_range=(1, 3), min_df=2, max_df=0.9, stop_words='english'), 'text'),
         ('features', ScamFeatureExtractor(), 'text')
-    ],
-    remainder='drop'
-)
+    ])
 
-model = Pipeline([
-    ('preprocessor', preprocessor),
-    ('scaler', StandardScaler(with_mean=False)),  # handles sparse data
-    ('clf', LogisticRegression(
-        class_weight='balanced',
-        max_iter=2000,
-        C=1.5,
-        solver='liblinear',
-        random_state=42
-    ))
-])
+    model = Pipeline([
+        ('preprocessor', preprocessor),
+        ('scaler', StandardScaler(with_mean=False)),
+        ('clf', LogisticRegression(class_weight='balanced', max_iter=2000, C=1.5, random_state=42))
+    ])
 
-# Split and train
-X_train, X_test, y_train, y_test = train_test_split(
-    [{'text': msg} for msg in messages], labels, test_size=0.2, random_state=42, stratify=labels
-)
+    X_train_text = [m for m in messages]
+    model.fit(X_train_text, labels)
+    joblib.dump(model, MODEL_PATH)
+    print("✅ Model trained and saved successfully")
 
-# Convert back to lists for pipeline
-X_train_text = [x['text'] for x in X_train]
-X_test_text = [x['text'] for x in X_test]
-
-model.fit(X_train_text, y_train)
-
-# Evaluation
-y_pred = model.predict(X_test_text)
-print("✅ Model Training Complete!")
-print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Scam']))
-
-# Save model
-joblib.dump(model, 'advanced_scam_detector_v2.pkl')
-print(f"Model saved as 'advanced_scam_detector_v2.pkl' at {datetime.now()}")
-
-# ====================== SMART PREDICTION FUNCTION ======================
-def detect_scam_advanced(text: str, threshold: float = 0.60) -> dict:
-    """Highly accurate scam detection with explanation"""
+# ====================== DETECTION FUNCTION ======================
+def detect_scam_advanced(text: str, threshold: float = 0.58):
     if not text or len(text.strip()) < 5:
-        return {"is_scam": False, "scam_probability": 0.0, "reason": "Message too short"}
+        return {"is_scam": False, "scam_probability": 0.0, "recommendation": "Message too short", "matched_keywords": []}
 
     prob = model.predict_proba([text])[0][1]
     is_scam = prob >= threshold
 
-    # Keyword analysis for transparency
     text_lower = text.lower()
-    matched_keywords = [kw for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower]
-
-    # Feature insights
-    length = len(text)
-    caps_ratio = sum(1 for c in text if c.isupper()) / (length + 1)
-    excl_count = text.count('!') + text.count('?')
-
-    confidence = "High" if abs(prob - 0.5) > 0.35 else "Medium"
+    matched_keywords = [kw for kw in ALL_SCAM_INDICATORS if kw.lower() in text_lower][:6]
 
     return {
         "is_scam": bool(is_scam),
-        "scam_probability": round(float(prob), 4),
-        "confidence": confidence,
-        "matched_keywords": matched_keywords[:8],  # top signals
-        "message_length": length,
-        "caps_ratio": round(caps_ratio, 3),
-        "exclamation_count": excl_count,
-        "recommendation": "🚨 HIGH RISK - BLOCK & REPORT" if is_scam else "✅ Likely Legitimate",
-        "timestamp": datetime.now().isoformat()
+        "scam_probability": round(float(prob * 100), 1),
+        "confidence": "High" if abs(prob - 0.5) > 0.35 else "Medium",
+        "matched_keywords": matched_keywords,
+        "recommendation": "🚨 HIGH RISK - BLOCK & REPORT" if is_scam else "✅ Likely Legitimate"
     }
 
-# ====================== TEST THE UPGRADED DETECTOR ======================
-test_cases = [
-    "Congratulations you won ₦50 million lottery. Send your bank details immediately to claim.",
-    "Hi team, can we have the meeting at 3pm tomorrow?",
-    "Urgent: Your account is under review. Verify now using this link or it will be suspended.",
-    "Good afternoon, please find the updated contract attached. Let me know your thoughts.",
-    "My love, I am stuck overseas and need $400 for hospital. Please help me quickly."
-]
-
-print("\n🚀 Testing Advanced Scam Detector:")
-for msg in test_cases:
-    result = detect_scam_advanced(msg)
-    print(f"\nMessage: {msg[:80]}{'...' if len(msg)>80 else ''}")
-    print(f"Result : {result['recommendation']}")
-    print(f"Probability: {result['scam_probability']} | Confidence: {result['confidence']}")
-    if result['matched_keywords']:
-        print(f"Key signals: {', '.join(result['matched_keywords'][:5])}")
-# ---------------- HELPERS ----------------
+# ====================== DATABASE HELPERS ======================
 def get_user(username):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -281,182 +170,217 @@ def set_paid(username):
     conn.commit()
     conn.close()
 
-# ---------------- HOME ----------------
-@app.route("/", methods=["GET", "POST"])
+def save_history(username, message, result):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("""INSERT INTO history 
+                 (username, message, scam_probability, is_scam, timestamp) 
+                 VALUES (?, ?, ?, ?, ?)""",
+              (username, message, result["scam_probability"], int(result["is_scam"]), datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+# ====================== ROUTES ======================
+@app.route("/")
 def home():
-    score = None
-    message = ""
+    if "user" not in session:
+        return redirect(url_for("login"))
 
-    user = session.get("user")
-
-    if not user:
-        return redirect("/login")
-
-    user_data = get_user(user)
-
+    username = session["user"]
+    user_data = get_user(username)
     if not user_data:
-        return "User not found"
+        return "User not found", 404
 
-    paid = user_data[0]
-    checks = user_data[1]
+    paid, checks = user_data
+    result = None
+    message_text = ""
 
     if request.method == "POST":
-
-        # 🚫 LIMIT
-        if not paid and checks >= 3:
+        if not paid and checks >= 5:
             return render_template_string("""
-            <h2>🚫 Free limit reached</h2>
-            <p>You have used your 3 free checks.</p>
-
-            <button onclick="payWithPaystack()">💳 Pay ₦2000 to unlock</button>
+            <h2>🚫 Free Limit Reached (5 checks)</h2>
+            <p>Unlock unlimited checks for ₦2,000</p>
+            <button onclick="payWithPaystack()">💳 Pay with Paystack</button>
 
             <script src="https://js.paystack.co/v1/inline.js"></script>
             <script>
             function payWithPaystack(){
                 var handler = PaystackPop.setup({
-                    key: 'pk_test_53472e03ba2d63a4a5f9de9c49d88e901a2ab56a',
-                    email: 'agolummaxwell@gmail.com',
+                    key: '{{ public_key }}',
+                    email: 'user@example.com',
                     amount: 200000,
                     currency: "NGN",
-
                     callback: function(response){
                         window.location.href = "/verify?reference=" + response.reference;
-                    },
-
-                    onClose: function(){
-                        alert("Payment cancelled");
                     }
                 });
-
                 handler.openIframe();
             }
             </script>
-            """)
+            """, public_key=PAYSTACK_PUBLIC_KEY)
 
-        message = request.form["message"]
-        score = detect_scam(message)
-
-        if not paid:
-            update_checks(user)
-
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO history (username, message, score) VALUES (?, ?, ?)",
-                  (user, message, score))
-        conn.commit()
-        conn.close()
+        message_text = request.form.get("message", "").strip()
+        if message_text:
+            result = detect_scam_advanced(message_text)
+            if not paid:
+                update_checks(username)
+            save_history(username, message_text, result)
 
     return render_template_string("""
+    <!DOCTYPE html>
     <html>
     <head>
-        <title>DetectorMax</title>
+        <title>DetectorMax - Advanced Scam Detector</title>
         <style>
-            body { background:#0f172a; color:white; text-align:center; padding:50px; }
-            textarea { width:80%; height:120px; border-radius:8px; }
-            button { padding:12px 25px; background:#22c55e; border:none; border-radius:8px; color:white; }
+            body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; text-align: center; padding: 40px; }
+            textarea { width: 85%; height: 140px; padding: 15px; border-radius: 10px; font-size: 16px; }
+            button { padding: 14px 30px; font-size: 18px; background: #22c55e; color: white; border: none; border-radius: 8px; cursor: pointer; }
+            .result { margin: 30px auto; padding: 20px; border-radius: 12px; max-width: 700px; }
+            .high-risk { background: #991b1b; }
+            .safe { background: #166534; }
         </style>
     </head>
     <body>
-
-        <h1>🛡 DetectorMax</h1>
-
+        <h1>🛡️ DetectorMax</h1>
         {% if not paid %}
-            <p>Free checks left: {{3 - checks}}</p>
+            <p><strong>Free checks left:</strong> {{ 5 - checks }}</p>
         {% else %}
-            <p>✅ Unlimited access</p>
+            <p>✅ Unlimited Access</p>
         {% endif %}
 
         <form method="post">
-            <textarea name="message">{{message}}</textarea><br>
-            <button>Check Message</button>
+            <textarea name="message" placeholder="Paste suspicious message here...">{{ message_text }}</textarea><br><br>
+            <button type="submit">🔍 Analyze Message</button>
         </form>
 
-        {% if score is not none %}
-            <h3>Scam Score: {{score}}%</h3>
+        {% if result %}
+        <div class="result {{ 'high-risk' if result.is_scam else 'safe' }}">
+            <h2>{{ result.recommendation }}</h2>
+            <h3>Scam Probability: {{ result.scam_probability }}%</h3>
+            <p>Confidence: {{ result.confidence }}</p>
+            {% if result.matched_keywords %}
+                <p>Key Signals: {{ result.matched_keywords | join(', ') }}</p>
+            {% endif %}
+        </div>
         {% endif %}
 
-        <br><br>
-        <a href="/history" style="color:#38bdf8;">View History</a>
-
+        <br>
+        <a href="/history" style="color:#60a5fa;">📜 View History</a> | 
+        <a href="/logout" style="color:#f87171;">Logout</a>
     </body>
     </html>
-    """, score=score, message=message, checks=checks, paid=paid)
+    """, result=result, checks=checks, paid=paid, message_text=message_text)
 
-# ---------------- VERIFY PAYMENT ----------------
-@app.route("/verify")
-def verify():
-    reference = request.args.get("reference")
-    user = session.get("user")
-
-    if not reference or not user:
-        return "Invalid request"
-
-    url = f"https://api.paystack.co/transaction/verify/{reference}"
-
-    headers = {
-        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"
-    }
-
-    try:
-        response = requests.get(url, headers=headers)
-        data = response.json()
-
-        if data["status"] and data["data"]["status"] == "success":
-            set_paid(user)
-            return redirect("/")
-
-    except:
-        return "Verification error"
-
-    return "Payment verification failed"
-
-# ---------------- HISTORY ----------------
-@app.route("/history")
-def history():
-    user = session.get("user")
-
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-    c.execute("SELECT message, score FROM history WHERE username=?", (user,))
-    data = c.fetchall()
-    conn.close()
-
-    html = "<h2>Your History</h2>"
-    for msg, score in data:
-        html += f"<p><b>{score}%</b> - {msg}</p>"
-
-    html += '<br><a href="/">⬅ Back</a>'
-    return html
-
-# ---------------- LOGIN ----------------
-@app.route("/login", methods=["GET", "POST"])
-def login():
+@app.route("/register", methods=["GET", "POST"])
+def register():
     if request.method == "POST":
-        username = request.form["username"]
+        username = request.form["username"].strip()
+        password = request.form["password"]
+
+        if not username or not password:
+            return "Username and password are required"
+
+        hashed_password = generate_password_hash(password)
 
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
-
-        c.execute("SELECT * FROM users WHERE username=?", (username,))
-        user = c.fetchone()
-
-        if not user:
-            c.execute("INSERT INTO users (username) VALUES (?)", (username,))
+        try:
+            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
             conn.commit()
-
-        conn.close()
-
-        session["user"] = username
-        return redirect("/")
+            return redirect(url_for("login"))
+        except sqlite3.IntegrityError:
+            return "❌ Username already exists. Please choose another."
+        finally:
+            conn.close()
 
     return '''
-    <h2>Login</h2>
+    <h2>Register New Account</h2>
     <form method="post">
-        <input name="username" placeholder="Username"><br>
-        <button>Login</button>
+        <input name="username" placeholder="Username" required><br><br>
+        <input name="password" type="password" placeholder="Password" required><br><br>
+        <button type="submit">Register</button>
     </form>
+    <p>Already have an account? <a href="/login">Login here</a></p>
     '''
 
-# ---------------- RUN ----------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"]
+
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+        c.execute("SELECT password FROM users WHERE username=?", (username,))
+        user = c.fetchone()
+        conn.close()
+
+        if user and check_password_hash(user[0], password):
+            session["user"] = username
+            return redirect(url_for("home"))
+        else:
+            return "❌ Invalid username or password"
+
+    return '''
+    <h2>Login to DetectorMax</h2>
+    <form method="post">
+        <input name="username" placeholder="Username" required><br><br>
+        <input name="password" type="password" placeholder="Password" required><br><br>
+        <button type="submit">Login</button>
+    </form>
+    <p>New user? <a href="/register">Create an account</a></p>
+    '''
+
+@app.route("/verify")
+def verify_payment():
+    reference = request.args.get("reference")
+    username = session.get("user")
+
+    if not reference or not username:
+        return "Invalid request", 400
+
+    url = f"https://api.paystack.co/transaction/verify/{reference}"
+    headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        data = resp.json()
+
+        if data.get("status") and data["data"].get("status") == "success":
+            set_paid(username)
+            return redirect(url_for("home"))
+    except Exception as e:
+        print("Payment verification error:", e)
+
+    return "Payment verification failed. Please contact support."
+
+@app.route("/history")
+def history():
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    username = session["user"]
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("""SELECT message, scam_probability, is_scam, timestamp 
+                 FROM history WHERE username=? ORDER BY id DESC LIMIT 30""", (username,))
+    records = c.fetchall()
+    conn.close()
+
+    html = "<h2>Your Detection History</h2><hr>"
+    for msg, prob, is_scam, ts in records:
+        status = "🚨 SCAM" if is_scam else "✅ Safe"
+        html += f"<p><strong>{status}</strong> — {prob}% — {msg[:100]}{'...' if len(msg) > 100 else ''} <small>({ts[:10]})</small></p>"
+
+    html += '<br><a href="/">← Back to Home</a>'
+    return html
+
+@app.route("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect(url_for("login"))
+
+# ====================== RUN APP ======================
 if __name__ == "__main__":
+    print("🚀 DetectorMax Scam Detector is running...")
     app.run(debug=True)
