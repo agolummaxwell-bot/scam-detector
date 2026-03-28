@@ -145,51 +145,71 @@ def save(u, msg, r):
     conn.close()
 
 # ====================== HOME ======================
-@app.route("/", methods=["GET","POST"])
-def home():
-    if "user" not in session:
-        return redirect("/login")
+@app.route("/register", methods=["GET","POST"])
+def register():
+    if request.method=="POST":
+        u = request.form["username"]
+        p = generate_password_hash(request.form["password"])
 
-    user = session["user"]
-    paid, checks = get_user(user)
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+        try:
+            c.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,p))
+            conn.commit()
+            return redirect("/login")
+        except:
+            return "❌ User already exists"
+        finally:
+            conn.close()
 
-    result = None
-    message = ""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Register</title>
+        <style>
+            body {
+                background: #020617;
+                color: white;
+                font-family: Arial;
+                text-align: center;
+                padding-top: 100px;
+            }
 
-    if request.method == "POST":
+            input {
+                padding: 12px;
+                margin: 10px;
+                border-radius: 8px;
+                border: none;
+                width: 250px;
+            }
 
-        if not paid and checks >= 5:
-            return "Pay to continue"
+            button {
+                padding: 12px 30px;
+                background: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+            }
 
-        message = request.form.get("message","")
+            a { color: #60a5fa; }
+        </style>
+    </head>
+    <body>
 
-        if len(message) > 1000:
-            return "Message too long"
-
-        if message:
-            result = detect(message)
-            if not paid:
-                update_checks(user)
-            save(user, message, result)
-
-    return render_template_string("""
-    <h1>DetectorMax</h1>
+    <h1>📝 Create Account</h1>
 
     <form method="post">
-        <textarea name="message">{{message}}</textarea><br>
-        <button>Check</button>
+        <input name="username" placeholder="Username" required><br>
+        <input name="password" type="password" placeholder="Password" required><br><br>
+        <button type="submit">Register</button>
     </form>
 
-    {% if result %}
-        <h2>{{result.recommendation}}</h2>
-        <p>{{result.scam_probability}}%</p>
-        <p>{{result.confidence}}</p>
+    <p>Already have account? <a href="/login">Login</a></p>
 
-        {% for e in result.explanation %}
-            <p>• {{e}}</p>
-        {% endfor %}
-    {% endif %}
-
+    </body>
+    </html>
     """, result=result, message=message)
 
 # ====================== AUTH ======================
