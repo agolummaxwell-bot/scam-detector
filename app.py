@@ -245,13 +245,14 @@ def save_history(username, message, result):
     conn.close()
 
 # ====================== ROUTES ======================
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
     if "user" not in session:
         return redirect(url_for("login"))
 
     username = session["user"]
     user_data = get_user(username)
+
     if not user_data:
         return "User not found", 404
 
@@ -260,6 +261,8 @@ def home():
     message_text = ""
 
     if request.method == "POST":
+
+        # 🚫 Free limit check
         if not paid and checks >= 5:
             return render_template_string("""
             <h2>🚫 Free Limit Reached (5 checks)</h2>
@@ -284,7 +287,167 @@ def home():
             """, public_key=PAYSTACK_PUBLIC_KEY)
 
         message_text = request.form.get("message", "").strip()
-       if message_text:
+
+        if message_text:
+
+            # 🚫 Anti-spam protection
+            if len(message_text) > 1000:
+                return render_template_string("""
+                    <h2>🚫 Message too long</h2>
+                    <p>Please keep your message under 1000 characters.</p>
+                    <a href="/">⬅ Go Back</a>
+                """)
+
+            # ✅ AI detection
+            result = detect_scam_advanced(message_text)
+
+            if not paid:
+                update_checks(username)
+
+            save_history(username, message_text, result)
+
+    # ✅ ALWAYS render UI (GET + POST)
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DetectorMax AI</title>
+        <style>
+            body {
+                font-family: Arial;
+                background: linear-gradient(135deg, #0f172a, #020617);
+                color: white;
+                text-align: center;
+                padding: 30px;
+            }
+
+            .container {
+                max-width: 800px;
+                margin: auto;
+            }
+
+            textarea {
+                width: 100%;
+                height: 140px;
+                border-radius: 12px;
+                padding: 15px;
+                font-size: 16px;
+            }
+
+            button {
+                padding: 14px 30px;
+                font-size: 18px;
+                background: #22c55e;
+                border: none;
+                border-radius: 10px;
+                color: white;
+                cursor: pointer;
+            }
+
+            .meter {
+                height: 20px;
+                width: 100%;
+                background: #1e293b;
+                border-radius: 10px;
+                margin-top: 15px;
+                overflow: hidden;
+            }
+
+            .meter-fill {
+                height: 100%;
+                width: 0%;
+                transition: 0.5s;
+            }
+
+            .result-box {
+                margin-top: 25px;
+                padding: 20px;
+                border-radius: 12px;
+            }
+
+            .safe { background: #166534; }
+            .warn { background: #92400e; }
+            .danger { background: #991b1b; }
+
+            .explain {
+                margin-top: 10px;
+                font-size: 14px;
+                color: #cbd5f5;
+            }
+        </style>
+    </head>
+
+    <body>
+    <div class="container">
+
+        <h1>🛡️ DetectorMax AI</h1>
+
+        {% if not paid %}
+            <p>Free checks left: {{ 5 - checks }}</p>
+        {% else %}
+            <p>✅ Unlimited Access</p>
+        {% endif %}
+
+        <form method="post">
+            <textarea name="message" placeholder="Paste suspicious message...">{{message_text}}</textarea><br><br>
+            <button>🔍 Analyze</button>
+        </form>
+
+        {% if result %}
+        <div class="result-box 
+            {% if result.scam_probability > 70 %}danger
+            {% elif result.scam_probability > 40 %}warn
+            {% else %}safe{% endif %}">
+
+            <h2>{{ result.recommendation }}</h2>
+
+            <h3>{{ result.scam_probability }}% Risk</h3>
+
+            <!-- 🔥 Risk Meter -->
+            <div class="meter">
+                <div class="meter-fill" id="meter"></div>
+            </div>
+
+            <p>Confidence: {{ result.confidence }}</p>
+
+            {% if result.matched_keywords %}
+                <p>⚠️ Signals: {{ result.matched_keywords | join(', ') }}</p>
+            {% endif %}
+
+            {% if result.explanation %}
+                <div class="explain">
+                    <b>Why this was flagged:</b><br>
+                    {% for e in result.explanation %}
+                        • {{ e }}<br>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <script>
+        let score = {{ result.scam_probability }};
+        let meter = document.getElementById("meter");
+
+        meter.style.width = score + "%";
+
+        if(score < 40){
+            meter.style.background = "#22c55e";
+        }else if(score < 70){
+            meter.style.background = "#f59e0b";
+        }else{
+            meter.style.background = "#ef4444";
+        }
+        </script>
+        {% endif %}
+
+        <br><br>
+        <a href="/history" style="color:#60a5fa;">📜 History</a> |
+        <a href="/logout" style="color:#f87171;">Logout</a>
+
+    </div>
+    </body>
+    </html>
+    """, result=result, checks=checks, paid=paid, message_text=message_text)
 
     # 🚫 Anti-spam / length protection
     if len(message_text) > 1000:
