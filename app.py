@@ -18,10 +18,6 @@ from sklearn.calibration import CalibratedClassifierCV
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
 
-# ====================== PAYSTACK ======================
-PAYSTACK_SECRET_KEY = "sk_test_..."
-PAYSTACK_PUBLIC_KEY = "pk_test_..."
-
 # ====================== DATABASE ======================
 def init_db():
     conn = sqlite3.connect("database.db")
@@ -129,13 +125,6 @@ def update_checks(u):
     conn.commit()
     conn.close()
 
-def set_paid(u):
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-    c.execute("UPDATE users SET paid=1 WHERE username=?", (u,))
-    conn.commit()
-    conn.close()
-
 def save(u, msg, r):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -145,74 +134,64 @@ def save(u, msg, r):
     conn.close()
 
 # ====================== HOME ======================
-@app.route("/register", methods=["GET","POST"])
-def register():
-    if request.method=="POST":
-        u = request.form["username"]
-        p = generate_password_hash(request.form["password"])
+@app.route("/", methods=["GET","POST"])
+def home():
+    if "user" not in session:
+        return redirect("/login")
 
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-        try:
-            c.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,p))
-            conn.commit()
-            return redirect("/login")
-        except:
-            return "❌ User already exists"
-        finally:
-            conn.close()
+    user = session["user"]
+    paid, checks = get_user(user)
 
-    return """
-    <!DOCTYPE html>
+    result = None
+    message = ""
+
+    if request.method == "POST":
+        if not paid and checks >= 5:
+            return "🚫 Free limit reached"
+
+        message = request.form.get("message","")
+
+        if len(message) > 1000:
+            return "Message too long"
+
+        if message:
+            result = detect(message)
+            if not paid:
+                update_checks(user)
+            save(user, message, result)
+
+    return render_template_string("""
     <html>
     <head>
-        <title>Register</title>
-        <style>
-            body {
-                background: #020617;
-                color: white;
-                font-family: Arial;
-                text-align: center;
-                padding-top: 100px;
-            }
-
-            input {
-                padding: 12px;
-                margin: 10px;
-                border-radius: 8px;
-                border: none;
-                width: 250px;
-            }
-
-            button {
-                padding: 12px 30px;
-                background: #3b82f6;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-            }
-
-            a { color: #60a5fa; }
-        </style>
+    <style>
+    body {background:#020617;color:white;text-align:center;font-family:Arial;padding:40px;}
+    textarea {width:80%;height:120px;border-radius:10px;padding:10px;}
+    button {padding:10px 20px;background:#22c55e;border:none;color:white;border-radius:8px;}
+    </style>
     </head>
-    <body>
 
-    <h1>📝 Create Account</h1>
+    <body>
+    <h1>🛡️ DetectorMax</h1>
 
     <form method="post">
-        <input name="username" placeholder="Username" required><br>
-        <input name="password" type="password" placeholder="Password" required><br><br>
-        <button type="submit">Register</button>
+        <textarea name="message" placeholder="Paste message...">{{message}}</textarea><br><br>
+        <button>Check</button>
     </form>
 
-    <p>Already have account? <a href="/login">Login</a></p>
+    {% if result %}
+        <h2>{{result.recommendation}}</h2>
+        <h3>{{result.scam_probability}}%</h3>
+        <p>{{result.confidence}}</p>
 
+        {% for e in result.explanation %}
+            <p>• {{e}}</p>
+        {% endfor %}
+    {% endif %}
     </body>
     </html>
     """, result=result, message=message)
 
-# ====================== AUTH ======================
+# ====================== REGISTER ======================
 @app.route("/register", methods=["GET","POST"])
 def register():
     if request.method=="POST":
@@ -226,60 +205,25 @@ def register():
             conn.commit()
             return redirect("/login")
         except:
-            return "User exists"
+            return "❌ User exists"
+        finally:
+            conn.close()
 
-   return """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Login - DetectorMax</title>
-    <style>
-        body {
-            background: #020617;
-            color: white;
-            font-family: Arial;
-            text-align: center;
-            padding-top: 100px;
-        }
+    return """
+    <html>
+    <body style="background:#020617;color:white;text-align:center;padding-top:100px;">
+    <h1>Create Account</h1>
+    <form method="post">
+    <input name="username" placeholder="Username"><br><br>
+    <input name="password" type="password" placeholder="Password"><br><br>
+    <button>Register</button>
+    </form>
+    <p><a href="/login" style="color:lightblue;">Login</a></p>
+    </body>
+    </html>
+    """
 
-        input {
-            padding: 12px;
-            margin: 10px;
-            border-radius: 8px;
-            border: none;
-            width: 250px;
-        }
-
-        button {
-            padding: 12px 30px;
-            background: #22c55e;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        a {
-            color: #60a5fa;
-        }
-    </style>
-</head>
-<body>
-
-<h1>🔐 Login to DetectorMax</h1>
-
-<form method="post">
-    <input name="username" placeholder="Username" required><br>
-    <input name="password" type="password" placeholder="Password" required><br><br>
-    <button type="submit">Login</button>
-</form>
-
-<p>New user? <a href="/register">Create account</a></p>
-
-</body>
-</html>
-"""
-
+# ====================== LOGIN ======================
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method=="POST":
@@ -290,19 +234,26 @@ def login():
         c = conn.cursor()
         c.execute("SELECT password FROM users WHERE username=?", (u,))
         user = c.fetchone()
+        conn.close()
 
         if user and check_password_hash(user[0], p):
             session["user"] = u
             return redirect("/")
-        return "Invalid"
+        return "❌ Invalid"
 
-    return '''
+    return """
+    <html>
+    <body style="background:#020617;color:white;text-align:center;padding-top:100px;">
+    <h1>Login</h1>
     <form method="post">
-    <input name="username">
-    <input name="password" type="password">
+    <input name="username" placeholder="Username"><br><br>
+    <input name="password" type="password" placeholder="Password"><br><br>
     <button>Login</button>
     </form>
-    '''
+    <p><a href="/register" style="color:lightblue;">Create account</a></p>
+    </body>
+    </html>
+    """
 
 # ====================== RUN ======================
 if __name__ == "__main__":
