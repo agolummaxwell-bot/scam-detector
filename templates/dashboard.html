@@ -1,8 +1,20 @@
+<html>
+<head>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+<div class="container">
 <h1>Dashboard</h1>
 
-{% for item in data %}
-<p>{{item[0]}} → {{item[1]}}%</p>
+{% for row in data %}
+<div class="result">
+<p>{{row[0]}}</p>
+<p>{{row[1]}}%</p>
+</div>
 {% endfor %}
 
-<a href="/">Back</a>
+<p><a href="/">Back</a></p>
+</div>
+</body>
+</html>
