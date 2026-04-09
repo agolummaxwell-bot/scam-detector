@@ -1,53 +1,46 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Login</title>
+    <title>Login - DetectorMax</title>
     <style>
         body {
             font-family: Arial;
             background: #0f172a;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
             color: white;
-        }
-
-        .box {
-            background: #1e293b;
-            padding: 40px;
-            border-radius: 12px;
-            width: 300px;
             text-align: center;
+            padding: 50px;
         }
 
         .btn {
             display: block;
-            margin: 10px 0;
+            margin: 10px auto;
             padding: 12px;
-            border-radius: 6px;
+            width: 250px;
+            border-radius: 8px;
             text-decoration: none;
+            color: white;
             font-weight: bold;
         }
 
-        .google { background: white; color: black; }
-        .email { background: #2563eb; color: white; }
+        .google { background: #ea4335; }
+        .email { background: #2563eb; }
+        .apple { background: black; }
+        .yahoo { background: purple; }
+        .outlook { background: #0078d4; }
     </style>
 </head>
+
 <body>
 
-<div class="box">
-    <h2>DetectorMax</h2>
-    <p>Login to continue</p>
+<h2>Login to DetectorMax</h2>
 
-    <a href="/google-login" class="btn google">
-        Continue with Google
-    </a>
+<a href="/google-login" class="btn google">Continue with Google</a>
+<a href="/email-login" class="btn email">Continue with Email</a>
 
-    <a href="/email-login" class="btn email">
-        Continue with Email
-    </a>
-</div>
+<!-- Future-ready buttons -->
+<a href="#" class="btn apple">Continue with Apple</a>
+<a href="#" class="btn yahoo">Continue with Yahoo</a>
+<a href="#" class="btn outlook">Continue with Outlook</a>
 
 </body>
 </html>
