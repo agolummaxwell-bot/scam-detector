@@ -1,23 +1,30 @@
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<!DOCTYPE html>
 <html>
 <head>
-    <title>DetectorMax</title>
-    <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
+<div class="container">
 
 <h1>🛡️ DetectorMax</h1>
+<p>Welcome, {{user}}</p>
 
 <form method="post">
-<textarea name="message" placeholder="Paste message..."></textarea><br><br>
+<textarea name="message" placeholder="Paste message...">{{message}}</textarea>
 <button>Check</button>
 </form>
 
 {% if result %}
+<div class="result">
 <h2>{{result.recommendation}}</h2>
-<h3>{{result.scam_probability}}%</h3>
+<p>{{result.scam_probability}}%</p>
+<p>{{result.confidence}}</p>
+</div>
 {% endif %}
 
+<p><a href="/dashboard">Dashboard</a></p>
+<p><a href="/logout">Logout</a></p>
+
+</div>
 </body>
 </html>
