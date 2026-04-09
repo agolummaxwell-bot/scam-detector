@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify - DetectorMax</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a, #020617);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(15px);
+            padding: 40px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 40px rgba(0,0,0,0.4);
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #94a3b8;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .otp-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .otp-input {
+            width: 50px;
+            height: 55px;
+            font-size: 22px;
+            text-align: center;
+            border-radius: 10px;
+            border: none;
+            outline: none;
+            background: #020617;
+            color: white;
+        }
+
+        .otp-input:focus {
+            border: 2px solid #2563eb;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .resend {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        .resend a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .resend a:hover {
+            text-decoration: underline;
+        }
+
+        .logo {
+            font-size: 22px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+
+    <div class="logo">🚀 DetectorMax</div>
+
+    <h2>Verify your email</h2>
+    <p>Enter the 6-digit code sent to <b>{{ email }}</b></p>
+
+    <form method="POST" action="/verify" onsubmit="combineOTP()">
+
+        <div class="otp-container">
+            <input class="otp-input" maxlength="1" oninput="move(this,0)">
+            <input class="otp-input" maxlength="1" oninput="move(this,1)">
+            <input class="otp-input" maxlength="1" oninput="move(this,2)">
+            <input class="otp-input" maxlength="1" oninput="move(this,3)">
+            <input class="otp-input" maxlength="1" oninput="move(this,4)">
+            <input class="otp-input" maxlength="1" oninput="move(this,5)">
+        </div>
+
+        <input type="hidden" name="otp" id="otp">
+        <input type="hidden" name="email" value="{{ email }}">
+
+        <button type="submit">Verify</button>
+    </form>
+
+    <div class="resend">
+        Didn’t get the code? <a href="/email-login">Resend</a>
+    </div>
+
+</div>
+
+<script>
+function move(input, index) {
+    const inputs = document.querySelectorAll(".otp-input");
+
+    if (input.value.length === 1 && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+    }
+}
+
+function combineOTP() {
+    const inputs = document.querySelectorAll(".otp-input");
+    let code = "";
+
+    inputs.forEach(i => code += i.value);
+    document.getElementById("otp").value = code;
+}
+</script>
+
+</body>
+</html>
