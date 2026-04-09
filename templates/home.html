@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DetectorMax</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<h1>🛡️ DetectorMax</h1>
+
+<form method="post">
+<textarea name="message" placeholder="Paste message..."></textarea><br><br>
+<button>Check</button>
+</form>
+
+{% if result %}
+<h2>{{result.recommendation}}</h2>
+<h3>{{result.scam_probability}}%</h3>
+{% endif %}
+
+</body>
+</html>
