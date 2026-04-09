@@ -5,16 +5,30 @@
 
 <body>
 <div class="container">
-<h1>Dashboard</h1>
+
+<h1>📊 Your History</h1>
 
 {% for row in data %}
 <div class="result">
-<p>{{row[0]}}</p>
+<p><strong>{{row[0]}}</strong></p>
 <p>{{row[1]}}%</p>
+
+<p>
+{% if row[2] %}
+🚨 Scam
+{% else %}
+✅ Safe
+{% endif %}
+</p>
+
+<p style="font-size:12px; opacity:0.6;">
+{{row[3]}}
+</p>
 </div>
 {% endfor %}
 
-<p><a href="/">Back</a></p>
+<p><a href="/">⬅ Back</a></p>
+
 </div>
 </body>
 </html>
