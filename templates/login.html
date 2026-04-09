@@ -5,38 +5,47 @@
     <style>
         body {
             font-family: Arial;
+            background: #0f172a;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: #0f172a;
             color: white;
         }
 
         .box {
-            text-align: center;
             background: #1e293b;
             padding: 40px;
-            border-radius: 10px;
+            border-radius: 12px;
+            width: 300px;
+            text-align: center;
         }
 
         .btn {
-            background: white;
-            color: black;
-            padding: 12px 20px;
-            border-radius: 5px;
+            display: block;
+            margin: 10px 0;
+            padding: 12px;
+            border-radius: 6px;
             text-decoration: none;
             font-weight: bold;
         }
+
+        .google { background: white; color: black; }
+        .email { background: #2563eb; color: white; }
     </style>
 </head>
 <body>
 
 <div class="box">
-    <h2>Login to DetectorMax</h2>
-    <br>
-    <a href="/google-login" class="btn">
+    <h2>DetectorMax</h2>
+    <p>Login to continue</p>
+
+    <a href="/google-login" class="btn google">
         Continue with Google
+    </a>
+
+    <a href="/email-login" class="btn email">
+        Continue with Email
     </a>
 </div>
 
