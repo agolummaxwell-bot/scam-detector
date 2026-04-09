@@ -8,12 +8,14 @@ import random
 from datetime import datetime
 
 from flask import Flask, request, render_template, session, redirect, url_for
-from authlib.integrations.flask_client import OAuth
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
+
+from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
@@ -60,6 +62,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
         name TEXT,
+        password TEXT,
         paid INTEGER DEFAULT 0,
         checks INTEGER DEFAULT 0,
         created_at TEXT
@@ -199,6 +202,7 @@ def verify():
     user_otp = request.form["otp"]
 
     if OTP_STORE.get(email) == user_otp:
+
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
 
@@ -222,8 +226,7 @@ def verify():
 # ================= GOOGLE LOGIN =================
 @app.route("/google-login")
 def google_login():
-    redirect_uri = url_for("authorize", _external=True)
-    return google.authorize_redirect(redirect_uri)
+    return google.authorize_redirect("https://detectormax.com/authorize")
 
 @app.route("/authorize")
 def authorize():
@@ -264,8 +267,9 @@ def home():
     message = ""
 
     if request.method == "POST":
+
         if not is_premium(user) and checks >= 5:
-            return "🚫 Upgrade to premium"
+            return "🚫 Upgrade to premium to continue"
 
         message = request.form.get("message","")
 
@@ -287,7 +291,7 @@ def pay():
     return redirect(
         f"https://flutterwave.com/pay/nipvbc62jp3x"
         f"?email={user}"
-        f"&redirect_url=https://scam-detector.onrender.com/payment-success"
+        f"&redirect_url=https://detectormax.com/payment-success"
     )
 
 @app.route("/payment-success")
