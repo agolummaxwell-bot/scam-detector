@@ -4,7 +4,7 @@ import re
 import os
 import joblib
 import sqlite3
-import random   # ✅ NEW
+import random
 from datetime import datetime
 
 from flask import Flask, request, render_template, session, redirect, url_for
@@ -33,7 +33,7 @@ google = oauth.register(
 )
 
 # ================= EMAIL OTP =================
-OTP_STORE = {}   # ✅ NEW
+OTP_STORE = {}
 
 def send_otp_email(to_email, otp):
     sender = os.environ.get("EMAIL_USER")
@@ -53,7 +53,7 @@ def send_otp_email(to_email, otp):
     except Exception as e:
         print("Email error:", e)
 
-# ====================== DATABASE ======================
+# ================= DATABASE =================
 def init_db():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -81,7 +81,7 @@ def init_db():
 
 init_db()
 
-# ====================== MODEL ======================
+# ================= MODEL =================
 MODEL_PATH = "model.pkl"
 
 try:
@@ -102,7 +102,7 @@ except:
     model.fit(texts, labels)
     joblib.dump(model, MODEL_PATH)
 
-# ====================== DETECTION ======================
+# ================= DETECTION =================
 KEYWORDS = ["urgent","money","prize","click","verify","bank"]
 
 def extra_checks(text):
@@ -140,7 +140,7 @@ def detect(text):
         "recommendation": "🚨 Scam" if final>0.6 else "✅ Safe"
     }
 
-# ====================== HELPERS ======================
+# ================= HELPERS =================
 def get_user(u):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -164,7 +164,7 @@ def save(u, msg, r):
     conn.commit()
     conn.close()
 
-# ====================== EMAIL LOGIN ======================
+# ================= EMAIL LOGIN =================
 @app.route("/email-login", methods=["GET","POST"])
 def email_login():
     if request.method == "POST":
@@ -190,7 +190,7 @@ def verify():
     else:
         return "❌ Invalid code"
 
-# ====================== HOME ======================
+# ================= HOME =================
 @app.route("/", methods=["GET","POST"])
 def home():
     if "user" not in session:
@@ -216,7 +216,7 @@ def home():
 
     return render_template("home.html", result=result, message=message, user=user)
 
-# ====================== GOOGLE LOGIN ======================
+# ================= GOOGLE LOGIN =================
 @app.route("/google-login")
 def google_login():
     redirect_uri = url_for("authorize", _external=True)
@@ -248,7 +248,7 @@ def authorize():
     session["user"] = email
     return redirect("/")
 
-# ====================== LOGIN ======================
+# ================= LOGIN =================
 @app.route("/login")
 def login():
     return render_template("login.html")
@@ -258,20 +258,31 @@ def logout():
     session.clear()
     return redirect("/login")
 
-# ====================== PAYMENT ======================
+# ================= PAYMENT =================
 @app.route("/pay")
 def pay():
-    return redirect("https://flutterwave.com/pay/YOUR-LINK")
+    user = session.get("user")
 
-@app.route("/upgrade/<email>")
-def upgrade(email):
+    if not user:
+        return redirect("/login")
+
+    return redirect(f"https://flutterwave.com/pay/YOUR-LINK?email={user}&redirect_url=https://yourdomain.com/payment-success")
+
+@app.route("/payment-success")
+def payment_success():
+    email = session.get("user")
+
+    if not email:
+        return redirect("/login")
+
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
     c.execute("UPDATE users SET paid=1 WHERE email=?", (email,))
     conn.commit()
     conn.close()
-    return "✅ Account upgraded"
 
-# ====================== RUN ======================
+    return "✅ Payment successful! Your account is now upgraded."
+
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(debug=True)
