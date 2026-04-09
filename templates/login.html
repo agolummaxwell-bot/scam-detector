@@ -13,34 +13,34 @@
 
         .btn {
             display: block;
-            margin: 10px auto;
-            padding: 12px;
-            width: 250px;
-            border-radius: 8px;
+            margin: 15px auto;
+            padding: 14px;
+            width: 260px;
+            border-radius: 10px;
             text-decoration: none;
             color: white;
             font-weight: bold;
+            font-size: 16px;
         }
 
-        .google { background: #ea4335; }
-        .email { background: #2563eb; }
-        .apple { background: black; }
-        .yahoo { background: purple; }
-        .outlook { background: #0078d4; }
+        .email { 
+            background: #2563eb; 
+        }
+
+        .email:hover {
+            background: #1d4ed8;
+        }
     </style>
 </head>
 
 <body>
 
 <h2>Login to DetectorMax</h2>
+<p>Secure access with email verification</p>
 
-<a href="/google-login" class="btn google">Continue with Google</a>
-<a href="/email-login" class="btn email">Continue with Email</a>
-
-<!-- Future-ready buttons -->
-<a href="#" class="btn apple">Continue with Apple</a>
-<a href="#" class="btn yahoo">Continue with Yahoo</a>
-<a href="#" class="btn outlook">Continue with Outlook</a>
+<a href="/email-login" class="btn email">
+    Continue with Email
+</a>
 
 </body>
 </html>
