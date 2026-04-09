@@ -315,7 +315,11 @@ def pay():
     if not user:
         return redirect("/login")
 
-    return redirect(f"https://flutterwave.com/pay/YOUR-LINK?email={user}&redirect_url=https://yourdomain.com/payment-success")
+    return redirect(
+        f"https://flutterwave.com/pay/nipvbc62jp3x"
+        f"?email={user}"
+        f"&redirect_url=https://scam-detector.onrender.com/payment-success"
+    )
 
 @app.route("/payment-success")
 def payment_success():
