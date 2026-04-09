@@ -1,8 +1,19 @@
+<html>
+<head>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<h1>Register</h1>
+</head>
+
+<body>
+<div class="container">
+<h1>Create Account</h1>
+
 <form method="post">
-<input name="username"><br><br>
-<input name="password" type="password"><br><br>
+<input name="username" placeholder="Username">
+<input name="password" type="password" placeholder="Password">
 <button>Register</button>
 </form>
-<a href="/login">Login</a>
+
+<p><a href="/login">Login</a></p>
+</div>
+</body>
+</html>
