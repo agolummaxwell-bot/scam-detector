@@ -2,7 +2,6 @@ import re
 import os
 import joblib
 import sqlite3
-import requests
 from datetime import datetime
 
 from flask import Flask, request, render_template, session, redirect, url_for
@@ -13,17 +12,34 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
 
+# ✅ NEW: Google Auth
+from authlib.integrations.flask_client import OAuth
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
+
+# ====================== GOOGLE LOGIN ======================
+oauth = OAuth(app)
+
+google = oauth.register(
+    name='google',
+    client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+    access_token_url='https://oauth2.googleapis.com/token',
+    authorize_url='https://accounts.google.com/o/oauth2/auth',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 # ====================== DATABASE ======================
 def init_db():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
+    # ✅ UPDATED: use email instead of username
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
+        email TEXT UNIQUE,
+        name TEXT,
         password TEXT,
         paid INTEGER DEFAULT 0,
         checks INTEGER DEFAULT 0
@@ -49,15 +65,8 @@ MODEL_PATH = "model.pkl"
 try:
     model = joblib.load(MODEL_PATH)
 except:
-    scam = [
-        "you have won money", "urgent send money now",
-        "verify your account now", "click here to claim prize"
-    ]
-
-    legit = [
-        "hello how are you", "see you tomorrow",
-        "thank you", "let's meet later"
-    ]
+    scam = ["you have won money", "urgent send money now", "verify your account now", "click here to claim prize"]
+    legit = ["hello how are you", "see you tomorrow", "thank you", "let's meet later"]
 
     texts = scam * 30 + legit * 30
     labels = [1]*len(scam*30) + [0]*len(legit*30)
@@ -69,7 +78,6 @@ except:
 
     model = CalibratedClassifierCV(pipeline)
     model.fit(texts, labels)
-
     joblib.dump(model, MODEL_PATH)
 
 # ====================== DETECTION ======================
@@ -114,7 +122,7 @@ def detect(text):
 def get_user(u):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
-    c.execute("SELECT paid, checks FROM users WHERE username=?", (u,))
+    c.execute("SELECT paid, checks FROM users WHERE email=?", (u,))
     data = c.fetchone()
     conn.close()
     return data
@@ -122,7 +130,7 @@ def get_user(u):
 def update_checks(u):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
-    c.execute("UPDATE users SET checks=checks+1 WHERE username=?", (u,))
+    c.execute("UPDATE users SET checks=checks+1 WHERE email=?", (u,))
     conn.commit()
     conn.close()
 
@@ -160,59 +168,41 @@ def home():
 
     return render_template("home.html", result=result, message=message, user=user)
 
-# ====================== DASHBOARD ======================
-@app.route("/dashboard")
-def dashboard():
-    if "user" not in session:
-        return redirect("/login")
+# ====================== GOOGLE LOGIN ROUTES ======================
+@app.route("/google-login")
+def google_login():
+    redirect_uri = url_for("authorize", _external=True)
+    return google.authorize_redirect(redirect_uri)
 
-    user = session["user"]
+@app.route("/authorize")
+def authorize():
+    token = google.authorize_access_token()
+    user_info = google.parse_id_token(token)
+
+    email = user_info["email"]
+    name = user_info["name"]
 
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
-    c.execute("SELECT message, scam_probability, is_scam, timestamp FROM history WHERE username=? ORDER BY id DESC", (user,))
-    data = c.fetchall()
+
+    c.execute("SELECT * FROM users WHERE email=?", (email,))
+    user = c.fetchone()
+
+    if not user:
+        c.execute(
+            "INSERT INTO users (email, name, paid, checks) VALUES (?, ?, 0, 0)",
+            (email, name)
+        )
+        conn.commit()
+
     conn.close()
 
-    return render_template("dashboard.html", data=data, user=user)
+    session["user"] = email
+    return redirect("/")
 
-# ====================== AUTH ======================
-@app.route("/register", methods=["GET","POST"])
-def register():
-    if request.method=="POST":
-        u = request.form["username"]
-        p = generate_password_hash(request.form["password"])
-
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-        try:
-            c.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,p))
-            conn.commit()
-            return redirect("/login")
-        except:
-            return "❌ User exists"
-        finally:
-            conn.close()
-
-    return render_template("register.html")
-
-@app.route("/login", methods=["GET","POST"])
+# ====================== LOGIN PAGE ======================
+@app.route("/login")
 def login():
-    if request.method=="POST":
-        u = request.form["username"]
-        p = request.form["password"]
-
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-        c.execute("SELECT password FROM users WHERE username=?", (u,))
-        user = c.fetchone()
-        conn.close()
-
-        if user and check_password_hash(user[0], p):
-            session["user"] = u
-            return redirect("/")
-        return "❌ Invalid"
-
     return render_template("login.html")
 
 @app.route("/logout")
@@ -223,14 +213,13 @@ def logout():
 # ====================== PAYMENT ======================
 @app.route("/pay")
 def pay():
-    # Replace with your Flutterwave payment link
     return redirect("https://flutterwave.com/pay/YOUR-LINK")
 
-@app.route("/upgrade/<username>")
-def upgrade(username):
+@app.route("/upgrade/<email>")
+def upgrade(email):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
-    c.execute("UPDATE users SET paid=1 WHERE username=?", (username,))
+    c.execute("UPDATE users SET paid=1 WHERE email=?", (email,))
     conn.commit()
     conn.close()
     return "✅ Account upgraded"
