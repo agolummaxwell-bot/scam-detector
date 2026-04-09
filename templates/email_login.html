@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - DetectorMax</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a, #020617);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(15px);
+            padding: 40px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 40px rgba(0,0,0,0.4);
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #94a3b8;
+            margin-bottom: 25px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            outline: none;
+            margin-bottom: 15px;
+            font-size: 15px;
+            background: #020617;
+            color: white;
+        }
+
+        input::placeholder {
+            color: #64748b;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .back {
+            margin-top: 20px;
+            display: block;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .back:hover {
+            color: white;
+        }
+
+        .logo {
+            font-size: 22px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+
+    <div class="logo">🚀 DetectorMax</div>
+
+    <h2>Sign in</h2>
+    <p>Enter your email to receive a login code</p>
+
+    <form method="POST" action="/email-login">
+        <input type="email" name="email" placeholder="you@example.com" required>
+        <button type="submit">Send Code</button>
+    </form>
+
+    <a href="/login" class="back">← Back to login</a>
+
+</div>
+
+</body>
+</html>
