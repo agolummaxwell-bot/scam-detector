@@ -182,7 +182,7 @@ def is_premium(email):
     return user and user[0] == 1
 
 # ================= EMAIL LOGIN =================
-@app.route("/email-login", methods=["GET","POST"])
+@app.route("/email-login", methods=["GET", "POST"])
 def email_login():
     if request.method == "POST":
         email = request.form["email"]
@@ -194,8 +194,8 @@ def email_login():
 
         return render_template("verify.html", email=email)
 
+    # ✅ THIS must be outside the IF
     return render_template("email_login.html")
-
 @app.route("/verify", methods=["POST"])
 def verify():
     email = request.form["email"]
