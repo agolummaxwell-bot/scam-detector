@@ -4,7 +4,14 @@
 </head>
 
 <body>
+
 <div class="container">
+
+<!-- HEADER -->
+<div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+    <h2>DetectorMax</h2>
+    <a href="/logout">Logout</a>
+</div>
 
 <h1>🛡️ DetectorMax</h1>
 <p>Welcome, {{user}}</p>
@@ -14,17 +21,31 @@
 <button>Check</button>
 </form>
 
+<!-- RESULT -->
 {% if result %}
-<div class="result">
+<div class="result" style="
+{% if result.is_scam %}
+background:#7f1d1d;
+{% else %}
+background:#064e3b;
+{% endif %}
+">
 <h2>{{result.recommendation}}</h2>
 <p>{{result.scam_probability}}%</p>
 <p>{{result.confidence}}</p>
 </div>
 {% endif %}
 
-<p><a href="/dashboard">Dashboard</a></p>
-<p><a href="/logout">Logout</a></p>
+<!-- ACTIONS -->
+<a href="/pay">
+<button style="background:#6366f1; margin-top:10px;">
+Upgrade to Premium 🚀
+</button>
+</a>
+
+<p><a href="/dashboard">📊 View History</a></p>
 
 </div>
+
 </body>
 </html>
