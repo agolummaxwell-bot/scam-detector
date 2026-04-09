@@ -64,7 +64,8 @@ def init_db():
         name TEXT,
         password TEXT,
         paid INTEGER DEFAULT 0,
-        checks INTEGER DEFAULT 0
+        checks INTEGER DEFAULT 0,
+        created_at TEXT
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS history (
@@ -74,6 +75,14 @@ def init_db():
         scam_probability REAL,
         is_scam INTEGER,
         timestamp TEXT
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT,
+        amount TEXT,
+        status TEXT,
+        date TEXT
     )''')
 
     conn.commit()
@@ -164,6 +173,14 @@ def save(u, msg, r):
     conn.commit()
     conn.close()
 
+def is_premium(email):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT paid FROM users WHERE email=?", (email,))
+    user = c.fetchone()
+    conn.close()
+    return user and user[0] == 1
+
 # ================= EMAIL LOGIN =================
 @app.route("/email-login", methods=["GET","POST"])
 def email_login():
@@ -185,36 +202,26 @@ def verify():
     user_otp = request.form["otp"]
 
     if OTP_STORE.get(email) == user_otp:
+
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+
+        c.execute("SELECT * FROM users WHERE email=?", (email,))
+        user = c.fetchone()
+
+        if not user:
+            c.execute(
+                "INSERT INTO users (email, name, paid, checks, created_at) VALUES (?, ?, 0, 0, ?)",
+                (email, email, datetime.now())
+            )
+            conn.commit()
+
+        conn.close()
+
         session["user"] = email
         return redirect("/")
-    else:
-        return "❌ Invalid code"
 
-# ================= HOME =================
-@app.route("/", methods=["GET","POST"])
-def home():
-    if "user" not in session:
-        return redirect("/login")
-
-    user = session["user"]
-    paid, checks = get_user(user)
-
-    result = None
-    message = ""
-
-    if request.method == "POST":
-        if not paid and checks >= 5:
-            return "🚫 Free limit reached"
-
-        message = request.form.get("message","")
-
-        if message:
-            result = detect(message)
-            if not paid:
-                update_checks(user)
-            save(user, message, result)
-
-    return render_template("home.html", result=result, message=message, user=user)
+    return "❌ Invalid code"
 
 # ================= GOOGLE LOGIN =================
 @app.route("/google-login")
@@ -238,8 +245,8 @@ def authorize():
 
     if not user:
         c.execute(
-            "INSERT INTO users (email, name, paid, checks) VALUES (?, ?, 0, 0)",
-            (email, name)
+            "INSERT INTO users (email, name, paid, checks, created_at) VALUES (?, ?, 0, 0, ?)",
+            (email, name, datetime.now())
         )
         conn.commit()
 
@@ -248,15 +255,57 @@ def authorize():
     session["user"] = email
     return redirect("/")
 
-# ================= LOGIN =================
-@app.route("/login")
-def login():
-    return render_template("login.html")
+# ================= HOME =================
+@app.route("/", methods=["GET","POST"])
+def home():
+    if "user" not in session:
+        return redirect("/login")
 
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
+    user = session["user"]
+    paid, checks = get_user(user)
+
+    result = None
+    message = ""
+
+    if request.method == "POST":
+
+        if not is_premium(user) and checks >= 5:
+            return "🚫 Upgrade to premium to continue"
+
+        message = request.form.get("message","")
+
+        if message:
+            result = detect(message)
+            update_checks(user)
+            save(user, message, result)
+
+    return render_template("home.html", result=result, message=message, user=user)
+
+# ================= DASHBOARD =================
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
+        return redirect("/login")
+
+    user = session["user"]
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute("SELECT message, scam_probability, is_scam, timestamp FROM history WHERE username=? ORDER BY id DESC", (user,))
+    history = c.fetchall()
+
+    c.execute("SELECT COUNT(*) FROM history WHERE username=?", (user,))
+    total = c.fetchone()[0]
+
+    c.execute("SELECT COUNT(*) FROM history WHERE username=? AND is_scam=1", (user,))
+    scams = c.fetchone()[0]
+
+    conn.close()
+
+    safe = total - scams
+
+    return render_template("dashboard.html", history=history, total=total, scams=scams, safe=safe)
 
 # ================= PAYMENT =================
 @app.route("/pay")
@@ -277,11 +326,25 @@ def payment_success():
 
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
+
     c.execute("UPDATE users SET paid=1 WHERE email=?", (email,))
+    c.execute("INSERT INTO payments VALUES(NULL,?,?,?,?)",
+              (email, "Premium Plan", "success", datetime.now()))
+
     conn.commit()
     conn.close()
 
-    return "✅ Payment successful! Your account is now upgraded."
+    return redirect("/dashboard")
+
+# ================= AUTH =================
+@app.route("/login")
+def login():
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 # ================= RUN =================
 if __name__ == "__main__":
