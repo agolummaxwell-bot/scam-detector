@@ -1,7 +1,10 @@
+import smtplib
+from email.mime.text import MIMEText
 import re
 import os
 import joblib
 import sqlite3
+import random   # ✅ NEW
 from datetime import datetime
 
 from flask import Flask, request, render_template, session, redirect, url_for
@@ -12,13 +15,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
 
-# ✅ NEW: Google Auth
 from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
 
-# ====================== GOOGLE LOGIN ======================
+# ================= GOOGLE LOGIN =================
 oauth = OAuth(app)
 
 google = oauth.register(
@@ -30,12 +32,32 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'},
 )
 
+# ================= EMAIL OTP =================
+OTP_STORE = {}   # ✅ NEW
+
+def send_otp_email(to_email, otp):
+    sender = os.environ.get("EMAIL_USER")
+    password = os.environ.get("EMAIL_PASS")
+
+    msg = MIMEText(f"Your verification code is: {otp}")
+    msg["Subject"] = "DetectorMax Login Code"
+    msg["From"] = sender
+    msg["To"] = to_email
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, password)
+        server.sendmail(sender, to_email, msg.as_string())
+        server.quit()
+    except Exception as e:
+        print("Email error:", e)
+
 # ====================== DATABASE ======================
 def init_db():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
-    # ✅ UPDATED: use email instead of username
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
@@ -142,6 +164,32 @@ def save(u, msg, r):
     conn.commit()
     conn.close()
 
+# ====================== EMAIL LOGIN ======================
+@app.route("/email-login", methods=["GET","POST"])
+def email_login():
+    if request.method == "POST":
+        email = request.form["email"]
+
+        otp = str(random.randint(100000, 999999))
+        OTP_STORE[email] = otp
+
+        send_otp_email(email, otp)
+
+        return render_template("verify.html", email=email)
+
+    return render_template("email_login.html")
+
+@app.route("/verify", methods=["POST"])
+def verify():
+    email = request.form["email"]
+    user_otp = request.form["otp"]
+
+    if OTP_STORE.get(email) == user_otp:
+        session["user"] = email
+        return redirect("/")
+    else:
+        return "❌ Invalid code"
+
 # ====================== HOME ======================
 @app.route("/", methods=["GET","POST"])
 def home():
@@ -168,7 +216,7 @@ def home():
 
     return render_template("home.html", result=result, message=message, user=user)
 
-# ====================== GOOGLE LOGIN ROUTES ======================
+# ====================== GOOGLE LOGIN ======================
 @app.route("/google-login")
 def google_login():
     redirect_uri = url_for("authorize", _external=True)
@@ -200,7 +248,7 @@ def authorize():
     session["user"] = email
     return redirect("/")
 
-# ====================== LOGIN PAGE ======================
+# ====================== LOGIN ======================
 @app.route("/login")
 def login():
     return render_template("login.html")
