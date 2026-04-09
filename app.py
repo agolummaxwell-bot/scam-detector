@@ -3,11 +3,9 @@ import os
 import joblib
 import sqlite3
 import requests
-import numpy as np
-import pandas as pd
 from datetime import datetime
 
-from flask import Flask, request, render_template_string, session, redirect, url_for
+from flask import Flask, request, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -16,7 +14,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
+app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
 
 # ====================== DATABASE ======================
 def init_db():
@@ -77,6 +75,16 @@ except:
 # ====================== DETECTION ======================
 KEYWORDS = ["urgent","money","prize","click","verify","bank"]
 
+def extra_checks(text):
+    score = 0
+    if re.search(r"\$\d+", text):
+        score += 0.1
+    if text.isupper():
+        score += 0.1
+    if "!!!" in text:
+        score += 0.05
+    return score
+
 def detect(text):
     prob = model.predict_proba([text])[0][1]
     text_lower = text.lower()
@@ -92,24 +100,17 @@ def detect(text):
     if "http" in text_lower:
         boost += 0.1
 
-    final = min(prob + boost, 1)
-
-    explanation = []
-    if matched:
-        explanation.append("Contains suspicious keywords")
-    if "http" in text_lower:
-        explanation.append("Contains link")
+    final = min(prob + boost + extra_checks(text), 1)
 
     return {
         "is_scam": final > 0.6,
         "scam_probability": round(final*100,1),
         "confidence": "High" if final>0.8 else "Medium",
         "matched_keywords": matched,
-        "explanation": explanation,
         "recommendation": "🚨 Scam" if final>0.6 else "✅ Safe"
     }
 
-# ====================== DB HELPERS ======================
+# ====================== HELPERS ======================
 def get_user(u):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
@@ -151,47 +152,31 @@ def home():
 
         message = request.form.get("message","")
 
-        if len(message) > 1000:
-            return "Message too long"
-
         if message:
             result = detect(message)
             if not paid:
                 update_checks(user)
             save(user, message, result)
 
-    return render_template_string("""
-    <html>
-    <head>
-    <style>
-    body {background:#020617;color:white;text-align:center;font-family:Arial;padding:40px;}
-    textarea {width:80%;height:120px;border-radius:10px;padding:10px;}
-    button {padding:10px 20px;background:#22c55e;border:none;color:white;border-radius:8px;}
-    </style>
-    </head>
+    return render_template("home.html", result=result, message=message, user=user)
 
-    <body>
-    <h1>🛡️ DetectorMax</h1>
+# ====================== DASHBOARD ======================
+@app.route("/dashboard")
+def dashboard():
+    if "user" not in session:
+        return redirect("/login")
 
-    <form method="post">
-        <textarea name="message" placeholder="Paste message...">{{message}}</textarea><br><br>
-        <button>Check</button>
-    </form>
+    user = session["user"]
 
-    {% if result %}
-        <h2>{{result.recommendation}}</h2>
-        <h3>{{result.scam_probability}}%</h3>
-        <p>{{result.confidence}}</p>
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT message, scam_probability, is_scam, timestamp FROM history WHERE username=? ORDER BY id DESC", (user,))
+    data = c.fetchall()
+    conn.close()
 
-        {% for e in result.explanation %}
-            <p>• {{e}}</p>
-        {% endfor %}
-    {% endif %}
-    </body>
-    </html>
-    """, result=result, message=message)
+    return render_template("dashboard.html", data=data, user=user)
 
-# ====================== REGISTER ======================
+# ====================== AUTH ======================
 @app.route("/register", methods=["GET","POST"])
 def register():
     if request.method=="POST":
@@ -209,21 +194,8 @@ def register():
         finally:
             conn.close()
 
-    return """
-    <html>
-    <body style="background:#020617;color:white;text-align:center;padding-top:100px;">
-    <h1>Create Account</h1>
-    <form method="post">
-    <input name="username" placeholder="Username"><br><br>
-    <input name="password" type="password" placeholder="Password"><br><br>
-    <button>Register</button>
-    </form>
-    <p><a href="/login" style="color:lightblue;">Login</a></p>
-    </body>
-    </html>
-    """
+    return render_template("register.html")
 
-# ====================== LOGIN ======================
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method=="POST":
@@ -241,19 +213,27 @@ def login():
             return redirect("/")
         return "❌ Invalid"
 
-    return """
-    <html>
-    <body style="background:#020617;color:white;text-align:center;padding-top:100px;">
-    <h1>Login</h1>
-    <form method="post">
-    <input name="username" placeholder="Username"><br><br>
-    <input name="password" type="password" placeholder="Password"><br><br>
-    <button>Login</button>
-    </form>
-    <p><a href="/register" style="color:lightblue;">Create account</a></p>
-    </body>
-    </html>
-    """
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
+# ====================== PAYMENT ======================
+@app.route("/pay")
+def pay():
+    # Replace with your Flutterwave payment link
+    return redirect("https://flutterwave.com/pay/YOUR-LINK")
+
+@app.route("/upgrade/<username>")
+def upgrade(username):
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET paid=1 WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    return "✅ Account upgraded"
 
 # ====================== RUN ======================
 if __name__ == "__main__":
