@@ -8,14 +8,12 @@ import random
 from datetime import datetime
 
 from flask import Flask, request, render_template, session, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
-
-from authlib.integrations.flask_client import OAuth
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
@@ -62,7 +60,6 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
         name TEXT,
-        password TEXT,
         paid INTEGER DEFAULT 0,
         checks INTEGER DEFAULT 0,
         created_at TEXT
@@ -202,7 +199,6 @@ def verify():
     user_otp = request.form["otp"]
 
     if OTP_STORE.get(email) == user_otp:
-
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
 
@@ -268,9 +264,8 @@ def home():
     message = ""
 
     if request.method == "POST":
-
         if not is_premium(user) and checks >= 5:
-            return "🚫 Upgrade to premium to continue"
+            return "🚫 Upgrade to premium"
 
         message = request.form.get("message","")
 
@@ -280,32 +275,6 @@ def home():
             save(user, message, result)
 
     return render_template("home.html", result=result, message=message, user=user)
-
-# ================= DASHBOARD =================
-@app.route("/dashboard")
-def dashboard():
-    if "user" not in session:
-        return redirect("/login")
-
-    user = session["user"]
-
-    conn = sqlite3.connect("database.db")
-    c = conn.cursor()
-
-    c.execute("SELECT message, scam_probability, is_scam, timestamp FROM history WHERE username=? ORDER BY id DESC", (user,))
-    history = c.fetchall()
-
-    c.execute("SELECT COUNT(*) FROM history WHERE username=?", (user,))
-    total = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM history WHERE username=? AND is_scam=1", (user,))
-    scams = c.fetchone()[0]
-
-    conn.close()
-
-    safe = total - scams
-
-    return render_template("dashboard.html", history=history, total=total, scams=scams, safe=safe)
 
 # ================= PAYMENT =================
 @app.route("/pay")
@@ -338,7 +307,7 @@ def payment_success():
     conn.commit()
     conn.close()
 
-    return redirect("/dashboard")
+    return redirect("/")
 
 # ================= AUTH =================
 @app.route("/login")
